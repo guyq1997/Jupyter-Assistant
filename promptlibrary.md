@@ -1,0 +1,22 @@
+# Initial Prompt
+我想创建一个基于LLM的AI agent，我的想法是利用AutoGen库的编排和代码，灵活、方便地组建这个agent。
+
+## Agent的功能
+首先，agent的输入和输出会是什么样的呢？对于这个agent来说，输入是一些自然语言，和JupyterNotebook文件。Jupyter Notebook，其中包含给学生的作业，用户想要完善这些作业的结构，内容和评分标准，以便后续的标准化批改，并且能让学生更加清晰地理解作业的要求。这个完善工作可能包括以下几项：
+
+首先，格式明确。一种格式是一个问题对应一个作答区域。在Jupyter Notebook中，一个或多个markdown单元格下面有一个code单元格，供学生在其中作答。另一种情况是一个大问题被分解为几个小问题。学生可以在每个小问题中找到作答区域并填写完整的代码段。小问题下面不应再有小问题，结构最多是大问题包含几个小问题。这要求作业格式标准、问题定义清晰、评分标准明了。
+其次内容定义清楚。每个小问题和大问题都要有清晰的描述、要求和分数，并详细说明对学生的要求及作答方式。最后，作业必须有总分数和单个题目的分数。
+最后，作业必须有明确的作答区域。
+
+因此，agent的功能就是帮助老师将作业转换并编辑成格式、内容都非常清晰的Jupyter Notebook作业。输出是一个结构良好的Jupyter Notebook。
+
+## 如何实现
+关于这个agent，我设想了几种实现方法：
+
+首先，可以使用AutoGen创建一个多agent系统来编辑用户提供的Jupyter Notebook，并根据用户的需求调整内容。在一个包含三个agent的多agent框架下，其中一个叫Planner Agent，它将Jupyter Notebook划分为多个部分。Planner将信息传达给Editor，以便对Notebook的某一段进行编辑，直到编辑成结构良好的状态。
+
+可能还会有一个Critic Agent，审查Editor的结果是否满足先前的需求和用户的要求。如果不符合，Critic会反馈给Editor，Editor将重新编辑。直到Critic认为编辑符合要求，Planner再将下一个段落交给Editor，循环直到整个Notebook编辑完成，输出一个完整的Jupyter Notebook。
+
+这样做的过程中，为了确保context window不会过长，每完成一个小任务就会生成一个总结。这些总结作为上下文进入到下一轮对话中，这样即便到最后，总结也不会过多，context window保持干净。
+
+你能帮我想一下该如何实现这种构思吗？
