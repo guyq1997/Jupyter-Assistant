@@ -99,28 +99,48 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - When using seaborn styles in matplotlib, use 'seaborn-v0_8' instead of 'seaborn' as the style name due to recent seaborn version changes
 - Use 'gpt-4o' as the model name for OpenAI's GPT-4 with vision capabilities
 - Use 'autogen-agentchat' and 'autogen-ext[openai]' instead of 'pyautogen' for the latest version of AutoGen
+- When implementing AutoGen agents, use the async pattern with on_messages_stream for better control and feedback during message processing. This allows for progress updates and intermediate results to be streamed to the user.
+- Always specify UTF-8 encoding when reading text files to handle international characters
+- Use os.path.splitext() for reliable filename extension handling instead of string slicing
 
 # Scratchpad
 
-Current Task: Update RubricAgent to use the latest version of AutoGen
+Current Task: Build an iterative agent that can use tools multiple times and self-review
 
-Changes Made:
-[X] Update dependencies in requirements.txt
-  - Replaced pyautogen with autogen-agentchat and autogen-ext[openai]
-  - Updated version requirements
-[X] Update BaseAgent class
-  - Added new parameters for latest version
-  - Added code execution configuration
-  - Added termination message handling
-[X] Update RubricAgent class
-  - Added new GroupChat parameters
-  - Added system message for GroupChatManager
-  - Enhanced LLM configuration with new parameters
-  - Added caching and reproducibility features
+Task Requirements:
+1. Create an agent that can:
+   - Use tools multiple times in a single conversation
+   - Self-review its outputs
+   - Iterate based on feedback
+2. Implement based on AutoGen's custom agent guide and Claude MCP Client example
 
-Next Steps:
-1. Add tests for each component
-2. Add proper error handling and logging
-3. Implement configuration file loading
-4. Add support for different LLM providers
-5. Create example notebooks for testing
+Plan:
+[X] Study the AutoGen custom agent guide
+[X] Analyze current agent implementation
+[X] Design new agent architecture with:
+    - Tool usage tracking
+    - Self-review mechanism
+    - Iteration logic
+[X] Implement the new agent with:
+    - Tool execution and tracking
+    - Conversation history management
+    - Enhanced review system with tool results
+    - Improved iteration logic
+[X] Implement tool call extraction with support for:
+    - [TOOL_CALL]tool_name(args)[/TOOL_CALL] format
+    - <tool>tool_name(args)</tool> format
+    - Direct function call format
+[ ] Test with example scenarios
+
+Progress:
+- Implemented main IterativeAgent class with:
+  - Tool execution and tracking
+  - Enhanced review system that considers tool usage
+  - Conversation history management
+  - Iterative improvement with tool results
+- Implemented tool call extraction with:
+  - Multiple format support
+  - Robust argument parsing
+  - Tool name verification
+  - Error handling
+- Next: Test the implementation with example scenarios

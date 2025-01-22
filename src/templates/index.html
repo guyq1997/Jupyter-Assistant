@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Agent Chat Interface</title>
+    <!-- Add marked library for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Add highlight.js for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Add Python language support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <!-- Add SimpleMDE for markdown editing -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css">
+    <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
+    <!-- Add Monaco Editor -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/loader.min.js"></script>
+    <!-- Add our custom styles and scripts -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <!-- Configure marked options -->
+    <script>
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true,
+            gfm: true
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div id="notebook-section">
+            <div class="notebook-header">
+                <h2>Jupyter Notebook</h2>
+                <div class="notebook-controls">
+                    <input type="file" id="file-upload" accept=".ipynb" />
+                    <button id="upload-btn" class="upload-btn">Upload Notebook</button>
+                    <button id="add-cell-btn" class="primary">Add Cell</button>
+                    <button id="save-notebook-btn" class="primary">Save Notebook</button>
+                </div>
+            </div>
+            <div id="notebook-display">
+                <div id="notebook-content"></div>
+            </div>
+        </div>
+        <div id="messages">
+            <div id="messages-resizer"></div>
+            <div id="messages-header">
+                <h2>Conversation</h2>
+            </div>
+            <div id="messages-content">
+                <!-- Messages will be added here -->
+            </div>
+            <div id="input-container">
+                <div id="selected-cells"></div>
+                <div id="input-form">
+                    <input type="text" id="user-input" placeholder="Type your message here..." />
+                    <button id="send-button">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add our custom scripts -->
+    <script src="/static/js/notebook.js"></script>
+    <script src="/static/js/chat.js"></script>
+    <script>
+        // Initialize everything when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM Content Loaded - Starting initialization');
+            
+            // First initialize notebook functions
+            if (typeof initializeNotebookFunctions === 'function') {
+                console.log('Initializing notebook functions...');
+                initializeNotebookFunctions();
+            } else {
+                console.error('initializeNotebookFunctions not found');
+                return;
+            }
+            
+            // Then initialize chat
+            if (typeof initialize === 'function') {
+                console.log('Initializing chat...');
+                initialize();
+            } else {
+                console.error('chat initialize function not found');
+            }
+        });
+    </script>
+</body>
+</html> 

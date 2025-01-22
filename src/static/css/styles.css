@@ -1,0 +1,524 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    background-color: #f5f5f5;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    gap: 0;
+    position: relative;
+}
+
+#messages {
+    width: 400px;
+    min-width: 200px;
+    max-width: calc(100vw - 400px);
+    background-color: white;
+    box-shadow: -2px 0 4px rgba(0,0,0,0.1);
+    order: 2;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+#messages-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+#messages-header {
+    padding: 20px;
+    border-bottom: 1px solid #e1e4e8;
+}
+
+#messages-resizer {
+    position: absolute;
+    left: -5px;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: col-resize;
+    background-color: transparent;
+}
+
+#messages-resizer:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+#input-container {
+    padding: 20px;
+    background-color: white;
+    border-top: 1px solid #e1e4e8;
+    margin-top: auto;
+}
+
+#input-form {
+    display: flex;
+    gap: 10px;
+}
+
+#user-input {
+    flex-grow: 1;
+    padding: 10px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 16px;
+    resize: none;
+    min-height: 40px;
+    max-height: 120px;
+}
+
+#notebook-section {
+    flex: 1;
+    min-width: 400px;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    position: relative;
+    order: 1;
+    overflow: hidden;
+}
+
+.notebook-header {
+    position: sticky;
+    top: 0;
+    background-color: #f5f5f5;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    backdrop-filter: blur(5px);
+
+}
+
+#notebook-display {
+    flex: 1;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow-y: auto;
+    padding: 30px;
+    position: relative;
+    margin-top: 20px;
+}
+
+.upload-btn {
+    display: inline-block;
+    padding: 8px 16px;
+    background-color: #0366d6;
+    color: rgb(11, 11, 11);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+    border: none;
+}
+
+.upload-btn:hover {
+    background-color: #0256b9;
+}
+
+.message {
+    margin-bottom: 12px;
+    padding: 12px;
+    border-radius: 6px;
+    border-left: 4px solid #007bff;
+    background-color: #f8f9fa;
+    font-size: 14px;
+}
+
+.message-content {
+    margin-top: 5px;
+    line-height: 1.5;
+}
+
+.message-content pre {
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+}
+
+.message-content code {
+    background-color: #f1f1f1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+.message-content p {
+    margin: 0.5em 0;
+}
+
+.message-content ul, .message-content ol {
+    margin: 0.5em 0;
+    padding-left: 20px;
+}
+
+.agent-name {
+    font-weight: bold;
+    color: #007bff;
+}
+
+.timestamp {
+    font-size: 0.8em;
+    color: #6c757d;
+}
+
+#send-button {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#send-button:hover {
+    background-color: #0056b3;
+}
+
+#send-button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+}
+
+.waiting-input {
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+}
+
+.notebook-cell {
+    margin-bottom: 16px;
+    border-radius: 6px;
+    overflow: visible;
+    position: relative;
+}
+
+.cell-content-wrapper {
+    flex: 1;
+    min-width: 0;
+    margin-right: 30px;
+}
+
+.cell-type {
+    padding: 8px 16px;
+    background-color: #f6f8fa;
+    font-size: 12px;
+    color: #586069;
+}
+
+.cell-content {
+    padding: 16px;
+    overflow: visible;
+}
+
+.cell-content.code {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow: visible;
+}
+
+.cell-content.markdown {
+    padding: 8px 0;
+}
+
+/* Remove the general hover effect and only apply it to non-editing cells */
+.cell-content.markdown:not(.editing):hover {
+    background-color: #f8f9fa;
+    cursor: pointer;
+}
+.cell-content.markdown.editing {
+    padding: 8px;
+    background-color: white;
+}
+
+.system { background-color: #f0f0f0; }
+.agent { background-color: #e3f2fd; }
+.user { background-color: #e8f5e9; }
+
+#file-upload {
+    display: none;
+}
+
+.cell-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 4px 8px;
+    background-color: #f6f8fa;
+    border-bottom: 1px solid #e1e4e8;
+    margin-right: 0;
+}
+
+.cell-toolbar button,
+.notebook-controls button {
+    padding: 2px 6px;
+    font-size: 12px;
+    border: 1px solid #e1e4e8;
+    border-radius: 3px;
+    background-color: white;
+    cursor: pointer;
+}
+
+.cell-toolbar button:hover,
+.notebook-controls button:hover {
+    background-color: #f1f1f1;
+}
+
+.cell-toolbar select {
+    padding: 2px 6px;
+    font-size: 12px;
+    border: 1px solid #e1e4e8;
+    border-radius: 3px;
+}
+
+.notebook-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.notebook-controls button {
+    padding: 6px 12px;
+    font-size: 14px;
+    border: 1px solid #e1e4e8;
+    border-radius: 4px;
+    background-color: white;
+    cursor: pointer;
+}
+
+.notebook-controls button:hover {
+    background-color: #f1f1f1;
+}
+
+.notebook-controls button.primary {
+    background-color: #28a745;
+    color: white;
+    border-color: #28a745;
+}
+
+.notebook-controls button.primary:hover {
+    background-color: #218838;
+}
+
+.cell-editor {
+    width: 100%;
+    min-height: 100px;
+    max-height: 500px;
+    margin: 8px 0;
+    overflow: visible;
+    pointer-events: none;
+}
+
+.cell-editor .monaco-editor {
+    pointer-events: auto;
+}
+
+.cell-preview {
+    padding: 8px;
+    background-color: white;
+}
+
+/* Monaco editor customizations */
+.monaco-editor {
+    font-size: 15px !important;
+}
+
+.monaco-editor .line-numbers {
+    display: none !important;
+}
+
+/* SimpleMDE customizations */
+.editor-toolbar {
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+}
+
+.CodeMirror {
+    border: none !important;
+}
+
+/* Markdown cell styles */
+.notebook-cell.markdown-cell {
+    border: none;
+    border-radius: 0;
+    margin-bottom: 16px;
+    background-color: transparent;
+    position: relative;
+    display: block;
+}
+
+.notebook-cell.markdown-cell .cell-content-wrapper {
+    margin-right: 30px;
+}
+
+.notebook-cell.markdown-cell .cell-toolbar {
+    display: none;
+    margin-right: 30px;
+}
+
+.notebook-cell.markdown-cell.editing {
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    background-color: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.notebook-cell.markdown-cell.editing .cell-toolbar {
+    display: flex;
+}
+
+/* Code cell specific styles */
+.notebook-cell.code-cell {
+    display: flex;
+}
+
+/* General cell styles */
+.notebook-cell {
+    margin-bottom: 16px;
+    border-radius: 6px;
+    overflow: visible;
+    position: relative;
+}
+
+.cell-content-wrapper {
+    flex: 1;
+    min-width: 0;
+    margin-right: 30px;
+}
+
+/* Selection area styles */
+.cell-select-area {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 30px;
+    background-color: #f6f8fa;
+    border-left: 1px solid #e1e4e8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    z-index: 10;
+    user-select: none;
+}
+
+.cell-select-area:hover {
+    background-color: #e1e4e8;
+}
+
+.cell-select-area.selected {
+    background-color: #007bff;
+    color: white;
+}
+
+/* Selected cell styles */
+.notebook-cell.selected {
+    border-left: 4px solid #007bff;
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+/* Cell selection display in input area */
+#selected-cells {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px;
+    margin-bottom: 8px;
+    min-height: 30px;
+    border-bottom: 1px solid #ddd;
+}
+
+.selected-cell-tag {
+    background-color: #e9ecef;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.selected-cell-tag .remove {
+    cursor: pointer;
+    color: #666;
+}
+
+.selected-cell-tag .remove:hover {
+    color: #dc3545;
+}
+
+/* Update select area styles */
+.cell-select-area {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 30px;
+    background-color: #f6f8fa;
+    border-left: 1px solid #e1e4e8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    z-index: 10;
+    user-select: none;
+}
+
+.cell-select-area:hover {
+    background-color: #e1e4e8;
+}
+
+.cell-select-area.selected {
+    background-color: #007bff;
+    color: white;
+}
+
+/* SimpleMDE editor styles */
+.CodeMirror {
+    border-radius: 4px;
+    padding: 8px 0;
+    margin: 8px 0;
+    min-height: 100px;
+    max-height: 500px;
+    border: none !important;
+}
+
+.editor-toolbar {
+    opacity: 1 !important;
+    border-radius: 4px;
+    margin-bottom: -1px;
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+}
+
+.editor-toolbar.fullscreen {
+    margin-bottom: 0;
+}
+
+/* Add styles for save button states */
+#save-notebook-btn.unsaved {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+} 

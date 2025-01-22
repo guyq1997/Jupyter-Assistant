@@ -1,0 +1,270 @@
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+import json
+from typing import List, Dict, Any, Optional, Callable
+import logging
+import uvicorn
+from pathlib import Path
+import datetime
+import queue
+import threading
+import shutil
+import os
+import nbformat
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+# Create uploads directory if it doesn't exist
+UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+# Mount the templates and static directories
+templates_dir = Path(__file__).parent.parent / "templates"
+static_dir = Path(__file__).parent.parent / "static"
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+# Store active connections and input callbacks
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+        self.input_queue: queue.Queue = queue.Queue()
+        self.waiting_for_input: bool = False
+        self._loop = None
+        self.current_notebook: Optional[str] = None
+
+    async def _send_system_message(self, content: str, waiting_input: bool = False):
+        """Helper method to send system messages"""
+        await self.broadcast({
+            "type": "message",
+            "agent": "System",
+            "content": content,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "waiting_input": waiting_input
+        })
+
+    async def connect(self, websocket: WebSocket):
+        try:
+            await websocket.accept()
+            self.active_connections.append(websocket)
+            logger.info(f"New connection. Total connections: {len(self.active_connections)}")
+            await self._send_system_message("Connected to server")
+            if self.current_notebook:
+                await self.broadcast_notebook_update(self.current_notebook)
+        except Exception as e:
+            logger.error(f"Error accepting connection: {e}")
+            return
+
+    async def disconnect(self, websocket: WebSocket):
+        try:
+            self.active_connections.remove(websocket)
+            logger.info(f"Connection closed. Total connections: {len(self.active_connections)}")
+        except ValueError:
+            pass  # Connection already removed
+
+    async def broadcast(self, message: Dict[str, Any]):
+        if not self.active_connections:
+            logger.warning("No active connections to broadcast to")
+            return
+        
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except WebSocketDisconnect:
+                disconnected.append(connection)
+            except Exception as e:
+                logger.error(f"Error sending message: {e}")
+                disconnected.append(connection)
+        
+        # Clean up disconnected connections
+        for conn in disconnected:
+            await self.disconnect(conn)
+
+    def get_user_input(self, prompt: str = "") -> str:
+        """Get user input from the web interface"""
+        self.waiting_for_input = True
+        try:
+            loop = asyncio.get_event_loop() if asyncio.get_event_loop_policy().get_event_loop().is_running() else asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self._send_system_message(f"{prompt}\nWaiting for user input...", True))
+            return self.input_queue.get()
+        finally:
+            self.waiting_for_input = False
+
+    async def process_notebook(self, notebook_path: str) -> Dict:
+        """Helper method to process notebook content"""
+        with open(notebook_path, 'r', encoding='utf-8') as f:
+            nb = nbformat.read(f, as_version=4)
+        
+        return {
+            'cells': [{
+                'cell_type': cell.cell_type,
+                'source': cell.source,
+                'metadata': cell.metadata
+            } for cell in nb.cells]
+        }
+
+    async def broadcast_notebook_update(self, notebook_path: str):
+        """Broadcast notebook content to all connected clients"""
+        try:
+            notebook_data = await self.process_notebook(notebook_path)
+            await self.broadcast({
+                "type": "notebook_update",
+                "content": notebook_data,
+                "timestamp": datetime.datetime.now().isoformat()
+            })
+            await self._send_system_message("Notebook loaded successfully. Type your instructions to begin analysis.")
+        except Exception as e:
+            logger.error(f"Error broadcasting notebook update: {e}")
+            await self._send_system_message(f"Error loading notebook: {str(e)}")
+
+manager = ConnectionManager()
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Handle notebook file upload"""
+    try:
+        if not file.filename.endswith('.ipynb'):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Only Jupyter notebooks (.ipynb) are allowed"}
+            )
+        
+        filename_base = os.path.splitext(file.filename)[0]
+        copy_filename = f"{filename_base}_copy.ipynb"
+        file_path = UPLOAD_DIR / copy_filename
+        
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        manager.current_notebook = str(file_path)
+        
+        try:
+            notebook_content = await manager.process_notebook(str(file_path))
+        except Exception as e:
+            logger.error(f"Error reading notebook: {e}")
+            notebook_content = None
+        
+        return JSONResponse(content={
+            "message": "File uploaded successfully. Working on a copy of the notebook.",
+            "filename": copy_filename,
+            "notebook_content": notebook_content
+        })
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/")
+async def get():
+    """Serve the HTML page"""
+    with open(templates_dir / "index.html", 'r', encoding='utf-8') as f:
+        return HTMLResponse(content=f.read())
+
+# Create a queue for user input
+user_input_queue = asyncio.Queue()
+
+async def get_user_input() -> str:
+    # Wait for input from the queue
+    return await user_input_queue.get()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Handle WebSocket connections"""
+    await manager.connect(websocket)
+    try:
+        while True:
+            message = await websocket.receive_text()
+            data = json.loads(message)
+            
+            if data.get("type") == "user_input":
+                user_input = data.get("content", "").strip()
+                if user_input.startswith("analyze notebook"):
+                    if manager.current_notebook:
+                        await user_input_queue.put(f"Please analyze the notebook at {manager.current_notebook}")
+                    else:
+                        await manager._send_system_message("No notebook is currently loaded. Please upload one first.")
+                else:
+                    await user_input_queue.put(user_input)
+            
+            elif data.get("type") == "start_processing":
+                filename = data.get("filename")
+                if filename and not data.get("auto_analyze", False):
+                    notebook_path = UPLOAD_DIR / filename
+                    if notebook_path.exists():
+                        manager.current_notebook = str(notebook_path)
+                        await manager.broadcast_notebook_update(str(notebook_path))
+            
+            elif data.get("type") == "save_notebook":
+                if not manager.current_notebook:
+                    await manager._send_system_message("No notebook is currently loaded. Please upload one first.")
+                    continue
+
+                try:
+                    notebook_data = data.get("content")
+                    if not notebook_data:
+                        raise ValueError("No notebook content provided")
+
+                    nb = nbformat.v4.new_notebook()
+                    for cell_data in notebook_data.get("cells", []):
+                        cell = (nbformat.v4.new_code_cell if cell_data["cell_type"] == "code" 
+                               else nbformat.v4.new_markdown_cell)(
+                            source=cell_data["source"],
+                            metadata=cell_data.get("metadata", {})
+                        )
+                        nb.cells.append(cell)
+
+                    with open(manager.current_notebook, "w", encoding="utf-8") as f:
+                        nbformat.write(nb, f)
+
+                    await manager._send_system_message("Notebook saved successfully")
+                except Exception as e:
+                    logger.error(f"Error saving notebook: {e}")
+                    await manager._send_system_message(f"Error saving notebook: {str(e)}")
+    except WebSocketDisconnect:
+        await manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await manager.disconnect(websocket)
+
+# Function to broadcast messages
+async def broadcast_message(agent: str, message: str):
+    data = {
+        "type": "message",
+        "agent": agent,
+        "content": message
+    }
+    await manager.broadcast(data)
+
+async def broadcast_notebook_update(cells: List[Dict]):
+    data = {
+        "type": "notebook_update",
+        "cells": cells
+    }
+    await manager.broadcast(data)
+
+def start_server(app: FastAPI = app):
+    """Start the web server"""
+    config = uvicorn.Config(app, host="127.0.0.1", port=8765, log_level="info")
+    server = uvicorn.Server(config)
+    return server
+
+if __name__ == "__main__":
+    server = start_server()
+    asyncio.run(server.serve())
