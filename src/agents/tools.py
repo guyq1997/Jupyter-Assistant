@@ -198,7 +198,7 @@ tools = [{
                 "content": {"type": "string", "description": "New content for the cell"},
                 "cell_type": {"type": "string", "enum": ["markdown", "code"], "default": "markdown", "description": "Type of cell ('markdown' or 'code')"}
             },
-            "required": ["notebook_path", "cell_index", "content"],
+            "required": ["notebook_path", "cell_index", "content", "cell_type"],
             "additionalProperties": False
         },
         "strict": True
