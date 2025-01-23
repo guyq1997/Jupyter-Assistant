@@ -5,108 +5,193 @@ import nbformat
 from web_server import app, start_server, broadcast_message, broadcast_notebook_update, get_user_input, manager
 import uvicorn
 from openai import OpenAI
+import os
+import datetime
+import json
 
 client = OpenAI()
 
 async def process_query(self, query: str) -> str:
-    messages_plan = [
-        {"role": "system", "content": SYSTEM_MESSAGE_PLANNER},
-        {"role": "user", "content": query}
-    ]
-    
-    # Get initial plan (non-streaming)
-    response_plan = client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages_plan,
-        tools=tools,
-        tool_choice="none"
-    )
 
-    plan_content = response_plan.choices[0].message.content
-    await broadcast_message("Assistant", plan_content)
+    selected_cells_content = query.get("selected_cells", "") + f"\n\n<path_to_notebook>{os.environ['CURRENT_NOTEBOOK_PATH']}</path_to_notebook>"
+    query = query.get("message", "")
 
     messages = [
         {"role": "system", "content": SYSTEM_MESSAGE_EDITOR},
-        {"role": "user", "content": query},
-        {"role": "assistant", "content": plan_content},
-        {"role": "user", "content": "Please execute the plan."}
+        {"role": "user", "content": selected_cells_content, "name": "potential_context"},
+        {"role": "user", "content": query}
     ]
 
-    # Process tool calls and responses
+    # Process tool calls and responses with streaming
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=messages,
         tools=tools,
         tool_choice="auto",
+        parallel_tool_calls=False,
+        stream=True
     )
 
-    try:
-        tool_calls = response.choices[0].message.tool_calls
-        # Add assistant's message to conversation before tool responses
-        messages.append({
-            "role": "assistant",
-            "content": response.choices[0].message.content,
-            "tool_calls": tool_calls
-        })
-    except:
-        tool_calls = None
-        messages.append({
-            "role": "assistant",
-            "content": response.choices[0].message.content
-        })
+    assistant_message = {"role": "assistant", "content": ""}
     
-    response_content = response.choices[0].message.content
-    await broadcast_message("Assistant", response_content)
+    # Process the streaming response
+    for chunk in response:
+        delta = chunk.choices[0].delta
+        
+        # Handle content chunks
+        if delta.content:
+            content = delta.content
+            assistant_message["content"] += content
+            # Broadcast each content chunk immediately and flush
+            await broadcast_message("Assistant", content)
+            await asyncio.sleep(0)
+            
+        # Handle tool calls
+        elif hasattr(delta, 'tool_calls') and delta.tool_calls:
+            if "tool_calls" not in assistant_message:
+                assistant_message["tool_calls"] = []
+            
+            for tool_call in delta.tool_calls:
+                tool_call_index = tool_call.index
+                
+                # Initialize or update tool call
+                while len(assistant_message["tool_calls"]) <= tool_call_index:
+                    assistant_message["tool_calls"].append({
+                        "id": "",
+                        "type": "function",
+                        "function": {"name": "", "arguments": ""}
+                    })
+                
+                current_call = assistant_message["tool_calls"][tool_call_index]
+                
+                # Update ID if present
+                if hasattr(tool_call, 'id') and tool_call.id is not None:
+                    current_call["id"] = tool_call.id
+                
+                # Update function information if present
+                if hasattr(tool_call, 'function'):
+                    if hasattr(tool_call.function, 'name') and tool_call.function.name is not None:
+                        current_call["function"]["name"] = tool_call.function.name
+                    if hasattr(tool_call.function, 'arguments') and tool_call.function.arguments is not None:
+                        current_call["function"]["arguments"] += tool_call.function.arguments
+
+    # Clean up any remaining null values before appending
+    if "tool_calls" in assistant_message:
+        for call in assistant_message["tool_calls"]:
+            if not call["id"]:
+                call["id"] = ""
+            if not call["function"]["name"]:
+                call["function"]["name"] = ""
+            if not call["function"]["arguments"]:
+                call["function"]["arguments"] = "{}"
+
+    # Log the message structure before appending
+    print("Debug - Assistant message structure:", json.dumps(assistant_message, indent=2))
+    messages.append(assistant_message)
     
+    tool_calls = assistant_message.get("tool_calls", [])
     counter = 0
 
     while tool_calls and counter <= 3:
+        # Process all tool calls
         for tool_call in tool_calls:
-            name = tool_call.function.name
-            args = tool_call.function.arguments
             try:
-                tool_result = call_function(name, args)
-                tool_message = f"[Calling tool {name} with args {args}]"
-                await broadcast_message("Assistant", tool_message)
-                await broadcast_message("Assistant", f"Tool result: {tool_result}")
+                name = tool_call["function"]["name"] or ""
+                args = tool_call["function"]["arguments"] or "{}"
+                tool_result = await call_function(name, args)
+                tool_message = f"Calling tool {name}"
+                await broadcast_message("Assistant", f"\n\n🔧 {tool_message}\n\n")
+                await asyncio.sleep(0)
             except Exception as e:
                 error_message = f"Error calling tool {name}: {str(e)}"
-                await broadcast_message("Assistant", error_message)
+                await broadcast_message("Assistant", f"\n\nError message: {error_message}\n\n")
+                await asyncio.sleep(0)
                 tool_result = error_message
 
             messages.append({
                 "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": str(tool_result)  # Ensure tool result is string
+                "tool_call_id": tool_call["id"] or "",
+                "name": name or "",
+                "content": str(tool_result)
             })
 
+        # Log messages before creating next completion
+        print("Debug - Messages before next completion:", json.dumps(messages, indent=2))
+        
+        # Get the next assistant response with streaming
         response_2 = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
             tools=tools,
-            tool_choice="auto"
+            tool_choice="auto",
+            parallel_tool_calls=False,
+            stream=True
         )
 
-        tool_calls = response_2.choices[0].message.tool_calls
-        response2_content = response_2.choices[0].message.content
+        # Process the streaming response
+        assistant_message = {"role": "assistant", "content": ""}
         
-        # Add assistant's message with tool_calls if present
-        if tool_calls:
-            messages.append({
-                "role": "assistant",
-                "content": response2_content,
-                "tool_calls": tool_calls
-            })
-        else:
-            messages.append({
-                "role": "assistant",
-                "content": response2_content
-            })
+        for chunk in response_2:
+            delta = chunk.choices[0].delta
             
-        await broadcast_message("Assistant", response2_content)
+            # Handle content chunks
+            if delta.content:
+                content = delta.content
+                assistant_message["content"] += content
+                await broadcast_message("Assistant", content)
+                await asyncio.sleep(0)
+                
+            # Handle tool calls
+            elif hasattr(delta, 'tool_calls') and delta.tool_calls:
+                if "tool_calls" not in assistant_message:
+                    assistant_message["tool_calls"] = []
+                
+                for tool_call in delta.tool_calls:
+                    tool_call_index = tool_call.index
+                    
+                    # Initialize or update tool call
+                    while len(assistant_message["tool_calls"]) <= tool_call_index:
+                        assistant_message["tool_calls"].append({
+                            "id": "",
+                            "type": "function",
+                            "function": {"name": "", "arguments": ""}
+                        })
+                    
+                    current_call = assistant_message["tool_calls"][tool_call_index]
+                    
+                    # Update ID if present
+                    if hasattr(tool_call, 'id') and tool_call.id is not None:
+                        current_call["id"] = tool_call.id
+                    
+                    # Update function information if present
+                    if hasattr(tool_call, 'function'):
+                        if hasattr(tool_call.function, 'name') and tool_call.function.name is not None:
+                            current_call["function"]["name"] = tool_call.function.name
+                        if hasattr(tool_call.function, 'arguments') and tool_call.function.arguments is not None:
+                            current_call["function"]["arguments"] += tool_call.function.arguments
+
+        # Clean up any remaining null values before appending
+        if "tool_calls" in assistant_message:
+            for call in assistant_message["tool_calls"]:
+                if not call["id"]:
+                    call["id"] = ""
+                if not call["function"]["name"]:
+                    call["function"]["name"] = ""
+                if not call["function"]["arguments"]:
+                    call["function"]["arguments"] = "{}"
+
+        # Log the message structure before appending
+        print("Debug - Assistant message structure (after tool calls):", json.dumps(assistant_message, indent=2))
+        messages.append(assistant_message)
+        
+        #if assistant_message.get("tool_calls"):
+        #    await broadcast_message("Assistant", f"\n\nThis is the {counter + 1}. loop\n\n")
+        #    await asyncio.sleep(0)
+        
+        tool_calls = assistant_message.get("tool_calls", [])
         counter += 1
 
-    return 
+    return
 
 # Function to update notebook display
 async def update_notebook_display(notebook_path: str):
@@ -197,6 +282,15 @@ async def main():
             else:
                 print(f"Unexpected error: {e}")
                 raise
+
+async def broadcast_message(agent: str, message: str):
+    data = {
+        "type": "message",
+        "agent": agent,
+        "content": message,
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    await manager.broadcast(data)
 
 if __name__ == "__main__":
     try:

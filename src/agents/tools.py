@@ -6,6 +6,8 @@ from autogen_core.tools import FunctionTool
 from nbformat.v4 import new_notebook, new_markdown_cell, new_code_cell
 import nbformat
 import asyncio
+import time
+from duckduckgo_search import DDGS
 
 @dataclass
 class NotebookEditResult:
@@ -170,6 +172,33 @@ async def get_cell_content(
 def get_weather(location):
     return "Failed to get weather"
 
+def search_with_retry(query, max_results=10, max_retries=3):
+    """
+    Search using DuckDuckGo and return results with URLs and text snippets.
+    """
+    for attempt in range(max_retries):
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=max_results))
+                
+            if not results:
+                return "No results found"
+            
+            # Format results into a readable string
+            formatted_results = []
+            for i, r in enumerate(results, 1):
+                formatted_results.append(f"\n=== Result {i} ===")
+                formatted_results.append(f"URL: {r.get('href', 'N/A')}")
+                formatted_results.append(f"Title: {r.get('title', 'N/A')}")
+                formatted_results.append(f"Snippet: {r.get('body', 'N/A')}")
+            
+            return "\n".join(formatted_results)
+                
+        except Exception as e:
+            if attempt == max_retries - 1:  # If last attempt
+                return f"Search failed after {max_retries} attempts: {str(e)}"
+            time.sleep(1)  # Wait 1 second before retry
+
 tools = [{
     "type": "function",
     "function": {
@@ -216,7 +245,7 @@ tools = [{
                 "content": {"type": "string", "description": "Content for the new cell"},
                 "cell_type": {"type": "string", "enum": ["markdown", "code"], "default": "markdown", "description": "Type of cell ('markdown' or 'code')"}
             },
-            "required": ["notebook_path", "index", "content"],
+            "required": ["notebook_path", "index", "content", "cell_type"],
             "additionalProperties": False
         },
         "strict": True
@@ -283,6 +312,32 @@ tools = [{
         },
         "strict": True
     }
+}, {
+    "type": "function",
+    "function": {
+        "name": "search_with_retry",
+        "description": "Search the web using DuckDuckGo and return formatted results with URLs and snippets.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query"
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return"
+                },
+                "max_retries": {
+                    "type": "integer",
+                    "description": "Maximum number of retry attempts"
+                }
+            },
+            "required": ["query", "max_results", "max_retries"],
+            "additionalProperties": False
+        },
+        "strict": True
+    }
 }]
 
 async def call_function(name, args):
@@ -311,7 +366,8 @@ async def call_function(name, args):
             "delete_cell": delete_cell,
             "get_cell_content": get_cell_content,
             "notebook_content": notebook_content,
-            "clear_notebook_output": clear_notebook_output
+            "clear_notebook_output": clear_notebook_output,
+            "search_with_retry": search_with_retry
         }
         
         if name not in function_map:

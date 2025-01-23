@@ -2,20 +2,17 @@
 <html>
 <head>
     <title>Agent Chat Interface</title>
-    <!-- Add marked library for markdown rendering -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- Add highlight.js for code syntax highlighting -->
+    <!-- Add CSS dependencies first -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <!-- Add Python language support -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
-    <!-- Add SimpleMDE for markdown editing -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css">
-    <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
-    <!-- Add Monaco Editor -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/loader.min.js"></script>
-    <!-- Add our custom styles and scripts -->
     <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <!-- Add core dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.2/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
+    
     <!-- Configure marked options -->
     <script>
         marked.setOptions({
@@ -64,30 +61,48 @@
         </div>
     </div>
 
-    <!-- Add our custom scripts -->
-    <script src="/static/js/notebook.js"></script>
-    <script src="/static/js/chat.js"></script>
+    <!-- Load Monaco Editor first -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/loader.js"></script>
     <script>
-        // Initialize everything when DOM is ready
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('DOM Content Loaded - Starting initialization');
-            
-            // First initialize notebook functions
-            if (typeof initializeNotebookFunctions === 'function') {
-                console.log('Initializing notebook functions...');
-                initializeNotebookFunctions();
-            } else {
-                console.error('initializeNotebookFunctions not found');
-                return;
+        // Configure AMD loader for Monaco
+        require.config({
+            paths: {
+                'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs'
             }
-            
-            // Then initialize chat
-            if (typeof initialize === 'function') {
-                console.log('Initializing chat...');
-                initialize();
-            } else {
-                console.error('chat initialize function not found');
+        });
+
+        window.MonacoEnvironment = {
+            getWorkerUrl: function(workerId, label) {
+                return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
+                    self.MonacoEnvironment = {
+                        baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/'
+                    };
+                    importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.47.0/min/vs/base/worker/workerMain.js');`
+                )}`;
             }
+        };
+
+        // Load Monaco Editor
+        require(['vs/editor/editor.main'], function() {
+            console.log('Monaco editor loaded');
+            // Now load our application scripts
+            const notebookScript = document.createElement('script');
+            notebookScript.type = 'module';
+            notebookScript.src = '/static/js/notebook.js';
+            document.body.appendChild(notebookScript);
+
+            const chatScript = document.createElement('script');
+            chatScript.src = '/static/js/chat.js';
+            chatScript.onload = function() {
+                // Initialize chat when everything is loaded
+                if (typeof initialize === 'function') {
+                    console.log('Initializing chat...');
+                    initialize();
+                } else {
+                    console.error('chat initialize function not found');
+                }
+            };
+            document.body.appendChild(chatScript);
         });
     </script>
 </body>

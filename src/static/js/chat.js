@@ -7,6 +7,20 @@ let messagesContainer;
 function connectWebSocket() {
     ws = new WebSocket(`ws://${window.location.host}/ws`);
     
+    ws.onopen = function() {
+        console.log('WebSocket connected');
+        // Re-establish notebook connection if there was one
+        const savedNotebook = localStorage.getItem('currentNotebook');
+        if (savedNotebook && window.notebookFunctions) {
+            console.log('Re-establishing notebook connection for:', savedNotebook);
+            ws.send(JSON.stringify({
+                type: 'start_processing',
+                filename: savedNotebook,
+                auto_analyze: false
+            }));
+        }
+    };
+    
     ws.onmessage = function(event) {
         const data = JSON.parse(event.data);
         displayMessage(data);
@@ -14,7 +28,9 @@ function connectWebSocket() {
 
     ws.onclose = function() {
         console.log('WebSocket connection closed. Attempting to reconnect...');
-        setTimeout(connectWebSocket, 1000);
+        setTimeout(() => {
+            connectWebSocket();
+        }, 1000);
     };
 
     ws.onerror = function(error) {
@@ -49,14 +65,16 @@ function sendMessage() {
     
     // Combine message with selected cells content
     const fullMessage = selectedCellsContent ? 
-        `${message}\n\n${selectedCellsContent}` : 
-        message;
-    
+        `${selectedCellsContent}\n\n${message}` : message;
+    const selected_cells_content = selectedCellsContent ? 
+    `#Inputs\n\n##Current Notebook Cells\nHere are Jupyter Notebook cells I am looking at:\n\n${selectedCellsContent}\n\n` : '';
     console.log('Sending message:', fullMessage);
 
     ws.send(JSON.stringify({
         type: 'user_input',
-        content: fullMessage
+        selected_cells_content: selected_cells_content,
+        user_message: message
+        
     }));
 
     // Append user message to chat
@@ -70,21 +88,115 @@ function sendMessage() {
 }
 
 function displayMessage(data) {
+    // Handle notebook updates first
     if (data.type === "notebook_update") {
-        window.notebookFunctions.displayNotebook(data.content);
+        console.log('Received notebook update:', data.content);
+        if (window.notebookFunctions && window.notebookFunctions.displayNotebook) {
+            try {
+                // Save current editor states
+                const currentEditorStates = new Map();
+                if (window.notebookFunctions.editorManager) {
+                    window.notebookFunctions.editorManager.editors.forEach((editor, index) => {
+                        currentEditorStates.set(index, {
+                            value: editor.getValue ? editor.getValue() : editor.value(),
+                            cursor: editor.getCursor ? editor.getCursor() : null
+                        });
+                    });
+                }
+
+                // Update notebook
+                window.notebookFunctions.displayNotebook(data.content);
+
+                // Restore editor states for unchanged cells
+                if (window.notebookFunctions.editorManager) {
+                    window.notebookFunctions.editorManager.editors.forEach((editor, index) => {
+                        const prevState = currentEditorStates.get(index);
+                        if (prevState && editor) {
+                            const currentValue = editor.getValue ? editor.getValue() : editor.value();
+                            if (prevState.value === currentValue) {
+                                if (editor.focus) {
+                                    editor.focus();
+                                }
+                                if (prevState.cursor && editor.setCursor) {
+                                    editor.setCursor(prevState.cursor);
+                                }
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error updating notebook:', error);
+            }
+        } else {
+            console.warn('Notebook functions not available for update');
+        }
         return;
     }
 
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${data.agent.toLowerCase()}`;
-    
+    // Skip system messages
+    if (data.agent === 'System') {
+        return;
+    }
+
     const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-    const message = data.message || data.content || ''; // Provide empty string as fallback
-    
-    // Create message content with safe content
-    messageDiv.innerHTML = `<strong>${data.agent}</strong> (${timestamp}): ${marked.parse(message)}`;
-    document.getElementById('messages-content').appendChild(messageDiv);
-    document.getElementById('messages-content').scrollTop = document.getElementById('messages-content').scrollHeight;
+    const message = data.message || data.content || '';
+
+    // For assistant messages, try to append to existing message if it exists
+    if (data.agent === 'Assistant') {
+        const isTool = message.includes('Tool message:');
+        let assistantMessageDiv;
+        
+        // Check if the last message was a tool message
+        const lastMessage = messagesContainer.lastElementChild;
+        const lastWasTool = lastMessage?.classList.contains('tool-message');
+        
+        if (!isTool && !lastWasTool) {
+            // Regular assistant message - try to append to last message
+            assistantMessageDiv = messagesContainer.querySelector('.assistant-message:last-child');
+        }
+        
+        if (assistantMessageDiv && !isTool && !lastWasTool) {
+            // Get the content div and append the new message
+            const contentDiv = assistantMessageDiv.querySelector('.message-content');
+            const currentContent = contentDiv.getAttribute('data-raw-content') || '';
+            const newContent = currentContent + message;
+            contentDiv.setAttribute('data-raw-content', newContent);
+            contentDiv.innerHTML = marked.parse(newContent);
+        } else {
+            // Create new assistant message div
+            assistantMessageDiv = document.createElement('div');
+            assistantMessageDiv.className = 'message assistant-message';
+            if (isTool) assistantMessageDiv.classList.add('tool-message');
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.setAttribute('data-raw-content', message);
+            contentDiv.innerHTML = marked.parse(message);
+            
+            assistantMessageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(assistantMessageDiv);
+        }
+    } else if (data.agent === 'User') {
+        // Create user message with container
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message user-message';
+        
+        const agentSpan = document.createElement('span');
+        agentSpan.className = 'agent-name';
+        agentSpan.textContent = 'You';
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.setAttribute('data-raw-content', message);
+        contentDiv.innerHTML = marked.parse(message);
+        
+        messageDiv.appendChild(agentSpan);
+        messageDiv.appendChild(contentDiv);
+        messagesContainer.appendChild(messageDiv);
+    }
+
+    // Scroll to bottom
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
     if (data.waiting_input) {
         if (!userInput) {
@@ -172,6 +284,10 @@ function initializeFileUpload() {
                     window.notebookFunctions.displayNotebook(result.notebook_content);
                 }
                 
+                // Store the filename both in memory and localStorage
+                window.lastLoadedNotebook = result.filename;
+                localStorage.setItem('currentNotebook', result.filename);
+                
                 ws.send(JSON.stringify({
                     type: 'start_processing',
                     filename: result.filename,
@@ -196,7 +312,7 @@ function initialize() {
     // Wait for notebook functions to be available
     const checkNotebookFunctions = () => {
         console.log('Checking notebook functions availability...');
-        if (!window.notebookFunctions || !window.notebookFunctions.getSelectedCellsContent) {
+        if (!window.notebookFunctions || !window.notebookFunctions.displayNotebook) {
             console.log('Notebook functions not ready yet, retrying in 100ms...');
             setTimeout(checkNotebookFunctions, 100);
             return;
@@ -208,38 +324,7 @@ function initialize() {
         messagesContainer = document.getElementById('messages-content');
 
         // Initialize WebSocket connection
-        ws = new WebSocket(`ws://${window.location.host}/ws`);
-
-        ws.onopen = () => {
-            console.log('Connected to server');
-        };
-
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            
-            // Handle different message types
-            switch (data.type) {
-                case 'message':
-                    appendMessage(data);
-                    break;
-                case 'notebook_update':
-                    // Only update notebook if it's a notebook update message
-                    if (data.content && data.content.cells) {
-                        window.notebookFunctions.displayNotebook(data.content);
-                    }
-                    break;
-                default:
-                    console.log('Unknown message type:', data.type);
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            appendMessage({
-                agent: 'System',
-                content: 'Error connecting to server. Please refresh the page.'
-            });
-        };
+        connectWebSocket();
 
         // Add event listeners
         document.getElementById('send-button').addEventListener('click', sendMessage);
@@ -251,7 +336,18 @@ function initialize() {
 
         // Add notebook control event listeners
         document.getElementById('add-cell-btn').addEventListener('click', () => window.notebookFunctions.addCell());
-        document.getElementById('save-notebook-btn').addEventListener('click', window.notebookFunctions.saveNotebook);
+        document.getElementById('save-notebook-btn').addEventListener('click', () => {
+            window.notebookFunctions.saveNotebook();
+            // Ensure the watcher is active after save
+            const currentNotebook = localStorage.getItem('currentNotebook');
+            if (currentNotebook) {
+                ws.send(JSON.stringify({
+                    type: 'start_processing',
+                    filename: currentNotebook,
+                    auto_analyze: false
+                }));
+            }
+        });
 
         // Initialize resizer
         initializeResizer();
@@ -260,31 +356,78 @@ function initialize() {
         initializeFileUpload();
         
         console.log('Chat initialization complete');
-    };
+    }
     
     // Start checking for notebook functions
     checkNotebookFunctions();
 }
 
-function appendMessage(message) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${message.agent.toLowerCase()}-message`;
-    
-    const agentSpan = document.createElement('span');
-    agentSpan.className = 'agent-name';
-    agentSpan.textContent = message.agent;
-    
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'message-content';
-    
-    // Ensure content is a non-null string before parsing
-    const content = message.content || '';
-    contentDiv.innerHTML = marked.parse(content);
-    
-    messageDiv.appendChild(agentSpan);
-    messageDiv.appendChild(contentDiv);
-    messagesContainer.appendChild(messageDiv);
-    
+function appendMessage(messageData) {
+    if (!messagesContainer) {
+        messagesContainer = document.getElementById('messages-content');
+        if (!messagesContainer) {
+            console.error('Messages container not found');
+            return;
+        }
+    }
+
+    // Skip system messages
+    if (messageData.agent === 'System') {
+        return;
+    }
+
+    const content = messageData.content || '';
+
+    // For assistant messages, try to append to existing message if it exists
+    if (messageData.agent === 'Assistant') {
+        let assistantMessageDiv = messagesContainer.querySelector('.assistant-message:last-child');
+        
+        if (assistantMessageDiv) {
+            // Get the content div and append the new message
+            const contentDiv = assistantMessageDiv.querySelector('.message-content');
+            const currentContent = contentDiv.getAttribute('data-raw-content') || '';
+            const newContent = currentContent + content;
+            contentDiv.setAttribute('data-raw-content', newContent);
+            contentDiv.innerHTML = marked.parse(newContent);
+        } else {
+            // Create new assistant message div
+            assistantMessageDiv = document.createElement('div');
+            assistantMessageDiv.className = 'message assistant-message';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.setAttribute('data-raw-content', content);
+            contentDiv.innerHTML = marked.parse(content);
+            
+            assistantMessageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(assistantMessageDiv);
+        }
+    } else if (messageData.agent === 'User') {
+        let displayContent = content;
+        // Replace cell content with a clear indication of selected cells
+        displayContent = displayContent.replace(/(<(cell_[0-9]+_[a-zA-Z]+)>)([\s\S]*?)(<\/\2>)/g, 
+            (match, openTag, cellId) => `[Selected Cell: ${cellId}]`
+        );
+        displayContent = displayContent.trim();
+
+        // Create user message with container
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message user-message';
+        
+        const agentSpan = document.createElement('span');
+        agentSpan.className = 'agent-name';
+        agentSpan.textContent = 'You';
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.setAttribute('data-raw-content', displayContent);
+        contentDiv.innerHTML = marked.parse(displayContent);
+        
+        messageDiv.appendChild(agentSpan);
+        messageDiv.appendChild(contentDiv);
+        messagesContainer.appendChild(messageDiv);
+    }
+
     // Scroll to bottom
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
