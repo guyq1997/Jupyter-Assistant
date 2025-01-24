@@ -1,90 +1,126 @@
 'use strict';
 var userInput = null;
-let ws;
+let ws = null;
 let waitingForInput = false;
 let messagesContainer;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const INITIAL_RECONNECT_DELAY = 1000;
+
+function getReconnectDelay() {
+    // Exponential backoff with maximum of 30 seconds
+    return Math.min(INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts), 30000);
+}
 
 function connectWebSocket() {
-    ws = new WebSocket(`ws://${window.location.host}/ws`);
-    
-    ws.onopen = function() {
-        console.log('WebSocket connected');
-        // Re-establish notebook connection if there was one
-        const savedNotebook = localStorage.getItem('currentNotebook');
-        if (savedNotebook && window.notebookFunctions) {
-            console.log('Re-establishing notebook connection for:', savedNotebook);
-            ws.send(JSON.stringify({
-                type: 'start_processing',
-                filename: savedNotebook,
-                auto_analyze: false
-            }));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log('WebSocket already connected');
+        return;
+    }
+
+    try {
+        ws = new WebSocket(`ws://${window.location.host}/ws`);
+        
+        ws.onopen = function() {
+            console.log('WebSocket connected');
+            reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+            
+            // Re-establish notebook connection if there was one
+            const savedNotebook = localStorage.getItem('currentNotebook');
+            if (savedNotebook && window.notebookFunctions) {
+                console.log('Re-establishing notebook connection for:', savedNotebook);
+                ws.send(JSON.stringify({
+                    type: 'start_processing',
+                    filename: savedNotebook,
+                    auto_analyze: false
+                }));
+            }
+        };
+        
+        ws.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                displayMessage(data);
+            } catch (error) {
+                console.error('Error processing message:', error);
+            }
+        };
+
+        ws.onclose = function(event) {
+            console.log('WebSocket connection closed. Code:', event.code, 'Reason:', event.reason);
+            
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                const delay = getReconnectDelay();
+                console.log(`Attempting to reconnect in ${delay}ms... (Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+                
+                setTimeout(() => {
+                    reconnectAttempts++;
+                    connectWebSocket();
+                }, delay);
+            } else {
+                console.error('Max reconnection attempts reached. Please refresh the page.');
+                displaySystemMessage('Connection lost. Please refresh the page to reconnect.');
+            }
+        };
+
+        ws.onerror = function(error) {
+            console.error('WebSocket error:', error);
+            // Let onclose handle the reconnection
+        };
+    } catch (error) {
+        console.error('Error creating WebSocket connection:', error);
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            setTimeout(connectWebSocket, getReconnectDelay());
         }
-    };
-    
-    ws.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        displayMessage(data);
-    };
+    }
+}
 
-    ws.onclose = function() {
-        console.log('WebSocket connection closed. Attempting to reconnect...');
-        setTimeout(() => {
-            connectWebSocket();
-        }, 1000);
-    };
-
-    ws.onerror = function(error) {
-        console.error('WebSocket error:', error);
-    };
+function displaySystemMessage(message) {
+    if (messagesContainer) {
+        const systemMessageDiv = document.createElement('div');
+        systemMessageDiv.className = 'message system-message';
+        systemMessageDiv.textContent = message;
+        messagesContainer.appendChild(systemMessageDiv);
+    }
 }
 
 function sendMessage() {
-    if (!userInput) {
-        userInput = document.getElementById('user-input');
-        if (!userInput) {
-            console.error('Input element with id "user-input" not found.');
-            return;
-        }
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        displaySystemMessage('Connection lost. Please wait for reconnection or refresh the page.');
+        return;
     }
+
     const message = userInput.value.trim();
     if (!message) return;
 
-    // Get selected cells content with error handling
-    let selectedCellsContent = '';
-    try {
-        if (window.notebookFunctions && typeof window.notebookFunctions.getSelectedCellsContent === 'function') {
-            console.log('Getting selected cells content...');
-            selectedCellsContent = window.notebookFunctions.getSelectedCellsContent();
-            console.log('Selected cells content:', selectedCellsContent);
-        } else {
-            console.warn('getSelectedCellsContent is not available');
-        }
-    } catch (error) {
-        console.warn('Error getting selected cells content:', error);
+    // Get selected cells content
+    let selected_cells_content = '';
+    if (window.notebookFunctions && window.notebookFunctions.getSelectedCellsContent) {
+        selected_cells_content = window.notebookFunctions.getSelectedCellsContent();
     }
-    
-    // Combine message with selected cells content
-    const fullMessage = selectedCellsContent ? 
-        `${selectedCellsContent}\n\n${message}` : message;
-    const selected_cells_content = selectedCellsContent ? 
-    `#Inputs\n\n##Current Notebook Cells\nHere are Jupyter Notebook cells I am looking at:\n\n${selectedCellsContent}\n\n` : '';
+
+    const fullMessage = selected_cells_content ? `Selected cells:\n${selected_cells_content}\n\nMessage: ${message}` : message;
     console.log('Sending message:', fullMessage);
 
-    ws.send(JSON.stringify({
-        type: 'user_input',
-        selected_cells_content: selected_cells_content,
-        user_message: message
-        
-    }));
+    try {
+        ws.send(JSON.stringify({
+            type: 'user_input',
+            selected_cells_content: selected_cells_content,
+            user_message: message
+        }));
 
-    // Append user message to chat
-    appendMessage({
-        agent: 'User',
-        content: fullMessage
-    });
+        // Append user message to chat
+        appendMessage({
+            agent: 'User',
+            content: fullMessage
+        });
 
-    // Clear input after sending
-    userInput.value = '';
+        // Clear input after sending
+        userInput.value = '';
+    } catch (error) {
+        console.error('Error sending message:', error);
+        displaySystemMessage('Failed to send message. Please try again.');
+    }
 }
 
 function displayMessage(data) {
@@ -104,8 +140,9 @@ function displayMessage(data) {
                     });
                 }
 
-                // Update notebook
-                window.notebookFunctions.displayNotebook(data.content);
+                // Display notebook with path
+                const notebookPath = data.notebook_path || ('src/uploads/' + window.currentNotebook);
+                window.notebookFunctions.displayNotebook(data.content, notebookPath);
 
                 // Restore editor states for unchanged cells
                 if (window.notebookFunctions.editorManager) {
@@ -133,7 +170,15 @@ function displayMessage(data) {
         return;
     }
 
-    // Skip system messages
+    // Handle clear history message
+    if (data.agent === 'System' && data.content === 'Message history cleared.') {
+        if (messagesContainer) {
+            messagesContainer.innerHTML = '';
+        }
+        return;
+    }
+
+    // Skip other system messages
     if (data.agent === 'System') {
         return;
     }
@@ -278,24 +323,7 @@ function initializeFileUpload() {
                 body: formData
             });
 
-            const result = await response.json();
-            if (response.ok) {
-                if (result.notebook_content) {
-                    window.notebookFunctions.displayNotebook(result.notebook_content);
-                }
-                
-                // Store the filename both in memory and localStorage
-                window.lastLoadedNotebook = result.filename;
-                localStorage.setItem('currentNotebook', result.filename);
-                
-                ws.send(JSON.stringify({
-                    type: 'start_processing',
-                    filename: result.filename,
-                    auto_analyze: false
-                }));
-            } else {
-                throw new Error(result.error || 'Unknown error');
-            }
+            handleUploadResponse(response);
         } catch (error) {
             console.error('Upload failed:', error.message);
         } finally {
@@ -334,8 +362,11 @@ function initialize() {
             }
         });
 
+        // Add clear history button event listener
+        document.getElementById('clear-history-btn').addEventListener('click', clearHistory);
+
         // Add notebook control event listeners
-        document.getElementById('add-cell-btn').addEventListener('click', () => window.notebookFunctions.addCell());
+        document.getElementById('add-cell-btn').addEventListener('click', downloadNotebook);
         document.getElementById('save-notebook-btn').addEventListener('click', () => {
             window.notebookFunctions.saveNotebook();
             // Ensure the watcher is active after save
@@ -430,4 +461,60 @@ function appendMessage(messageData) {
 
     // Scroll to bottom
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Add the clear history function
+function clearHistory() {
+    // Clear the messages container
+    if (messagesContainer) {
+        messagesContainer.innerHTML = '';
+    }
+
+    // Send clear history command to backend with correct format
+    ws.send(JSON.stringify({
+        type: 'user_input',
+        user_message: 'clear_history',
+        selected_cells_content: ''
+    }));
+}
+
+// Handle file upload response
+function handleUploadResponse(response) {
+    if (response.ok) {
+        response.json().then(data => {
+            window.currentNotebook = data.filename;
+            if (data.notebook_content) {
+                const notebookPath = 'src/uploads/' + data.filename;
+                window.notebookFunctions.displayNotebook(data.notebook_content, notebookPath);
+            }
+            // Start processing the notebook
+            ws.send(JSON.stringify({
+                type: 'start_processing',
+                filename: data.filename
+            }));
+        });
+    } else {
+        console.error('Upload failed');
+    }
+}
+
+// Add download notebook function
+function downloadNotebook() {
+    const currentNotebook = window.currentNotebook;
+    if (!currentNotebook) {
+        console.error('No notebook is currently loaded');
+        return;
+    }
+
+    // Save the notebook first to ensure latest changes are downloaded
+    window.notebookFunctions.saveNotebook();
+
+    // Create download link
+    const downloadUrl = `/download/${currentNotebook}`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = currentNotebook;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }

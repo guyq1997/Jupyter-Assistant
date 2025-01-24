@@ -35,7 +35,9 @@
                 <div class="notebook-controls">
                     <input type="file" id="file-upload" accept=".ipynb" />
                     <button id="upload-btn" class="upload-btn">Upload Notebook</button>
-                    <button id="add-cell-btn" class="primary">Add Cell</button>
+                    <button id="add-cell-btn" class="notebook-btn" title="Download Notebook">
+                        <i class="fas fa-download">Download</i>
+                    </button>
                     <button id="save-notebook-btn" class="primary">Save Notebook</button>
                 </div>
             </div>
@@ -47,6 +49,9 @@
             <div id="messages-resizer"></div>
             <div id="messages-header">
                 <h2>Conversation</h2>
+                <button id="clear-history-btn" class="control-btn" title="Clear chat history">
+                    <i class="fas fa-trash"></i> Clear History
+                </button>
             </div>
             <div id="messages-content">
                 <!-- Messages will be added here -->

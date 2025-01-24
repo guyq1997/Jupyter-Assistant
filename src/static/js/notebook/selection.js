@@ -82,7 +82,7 @@ export class SelectionManager {
             const tag = document.createElement('div');
             tag.className = 'selected-cell-tag';
             tag.innerHTML = `
-                Cell ${index + 1} (${cell.cell_type})
+                Cell ${index} (${cell.cell_type})
                 <span class="remove" onclick="window.notebookFunctions.removeSelectedCell(${index})">×</span>
             `;
             container.appendChild(tag);

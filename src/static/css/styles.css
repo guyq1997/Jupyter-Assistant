@@ -37,8 +37,11 @@ body {
 }
 
 #messages-header {
-    padding: 20px;
-    border-bottom: 1px solid #e1e4e8;
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 #messages-resizer {
@@ -643,5 +646,26 @@ body {
 
 .tool-message .message-content {
     color: #666;
+    font-size: 0.9em;
+}
+
+#clear-history-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9em;
+}
+
+#clear-history-btn:hover {
+    background-color: #c82333;
+}
+
+#clear-history-btn i {
     font-size: 0.9em;
 } 

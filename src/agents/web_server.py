@@ -1,5 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
@@ -52,27 +52,31 @@ class NotebookWatcher(FileSystemEventHandler):
         self._is_watching = False
         self._loop = None
         self._lock = asyncio.Lock()
+        self._watched_path = None
+        self._websocket = None
 
-    def start(self, path: str):
+    def start(self, path: str, websocket: WebSocket):
         """Start watching the notebook file"""
         try:
             if self._is_watching:
                 self.stop()
             
+            self._watched_path = path
+            self._websocket = websocket
             self.observer = Observer()
             watch_dir = os.path.dirname(path)
             self.observer.schedule(self, watch_dir, recursive=False)
             self.observer.start()
             self._is_watching = True
             self._loop = asyncio.new_event_loop()
-            logger.info(f"Started watching notebook at {path}")
+            logger.info(f"Started watching notebook at {path} for websocket connection")
         except Exception as e:
             logger.error(f"Error starting notebook watcher: {e}")
             self._is_watching = False
 
     def on_modified(self, event):
         try:
-            if not event.is_directory and event.src_path == self.manager.current_notebook:
+            if not event.is_directory and event.src_path == self._watched_path:
                 current_time = datetime.datetime.now().timestamp()
                 if current_time - self._last_modified > self._debounce_delay:
                     self._last_modified = current_time
@@ -82,12 +86,12 @@ class NotebookWatcher(FileSystemEventHandler):
                         self._loop = asyncio.new_event_loop()
                     
                     asyncio.set_event_loop(self._loop)
-                    self._loop.run_until_complete(self._handle_modification(event.src_path))
+                    self._loop.run_until_complete(self._handle_modification())
                     logger.info(f"Broadcast notebook update for {event.src_path}")
         except Exception as e:
             logger.error(f"Error handling file modification: {e}")
 
-    async def _handle_modification(self, file_path: str):
+    async def _handle_modification(self):
         """Handle file modification in an async context"""
         try:
             async with self._lock:
@@ -95,8 +99,8 @@ class NotebookWatcher(FileSystemEventHandler):
                 await asyncio.sleep(0.1)
                 
                 # Verify file exists and is readable
-                if not os.path.isfile(file_path):
-                    logger.error(f"Notebook file not found: {file_path}")
+                if not os.path.isfile(self._watched_path):
+                    logger.error(f"Notebook file not found: {self._watched_path}")
                     return
                 
                 # Try to read the file multiple times if needed
@@ -106,7 +110,8 @@ class NotebookWatcher(FileSystemEventHandler):
                 
                 for attempt in range(max_retries):
                     try:
-                        await self.manager.broadcast_notebook_update(file_path)
+                        if self._websocket and self._websocket in self.manager.active_connections:
+                            await self.manager.broadcast_notebook_update(self._watched_path, self._websocket)
                         break
                     except Exception as e:
                         last_error = e
@@ -127,6 +132,8 @@ class NotebookWatcher(FileSystemEventHandler):
                 if self._loop and not self._loop.is_closed():
                     self._loop.close()
                 self._loop = None
+                self._watched_path = None
+                self._websocket = None
                 logger.info("Stopped watching notebook")
         except Exception as e:
             logger.error(f"Error stopping notebook watcher: {e}")
@@ -138,68 +145,77 @@ class ConnectionManager:
         self.input_queue: queue.Queue = queue.Queue()
         self.waiting_for_input: bool = False
         self._loop = None
-        self.current_notebook: Optional[str] = None
-        self.notebook_watcher = NotebookWatcher(self)
+        self.notebook_watchers: Dict[WebSocket, NotebookWatcher] = {}  # Track watchers per connection
+        self._lock = asyncio.Lock()  # Add lock for thread safety
 
-    async def _send_system_message(self, content: str, waiting_input: bool = False):
+    async def _send_system_message(self, content: str, waiting_input: bool = False, websocket: Optional[WebSocket] = None):
         """Helper method to send system messages"""
-        await self.broadcast({
-            "type": "message",
-            "agent": "System",
-            "content": content,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "waiting_input": waiting_input
-        })
+        try:
+            message = {
+                "type": "message",
+                "agent": "System",
+                "content": content,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "waiting_input": waiting_input
+            }
+            if websocket:
+                await websocket.send_json(message)
+            else:
+                await self.broadcast(message)
+        except Exception as e:
+            logger.error(f"Error sending system message: {e}")
 
     async def connect(self, websocket: WebSocket):
         try:
             await websocket.accept()
-            self.active_connections.append(websocket)
+            async with self._lock:
+                self.active_connections.append(websocket)
+                self.notebook_watchers[websocket] = NotebookWatcher(self)
             logger.info(f"New connection. Total connections: {len(self.active_connections)}")
-            await self._send_system_message("Connected to server")
-            # Send current notebook state if exists
-            if self.current_notebook:
-                try:
-                    notebook_data = await self.process_notebook(self.current_notebook)
-                    await websocket.send_json({
-                        "type": "notebook_update",
-                        "content": notebook_data,
-                        "timestamp": datetime.datetime.now().isoformat()
-                    })
-                    logger.info(f"Sent current notebook state to new connection")
-                except Exception as e:
-                    logger.error(f"Error sending notebook state to new connection: {e}")
+            await self._send_system_message("Connected to server", websocket=websocket)
+        except WebSocketDisconnect:
+            await self.disconnect(websocket)
         except Exception as e:
             logger.error(f"Error accepting connection: {e}")
-            return
+            try:
+                await self.disconnect(websocket)
+            except:
+                pass
 
     async def disconnect(self, websocket: WebSocket):
         try:
-            self.active_connections.remove(websocket)
-            logger.info(f"Connection closed. Total connections: {len(self.active_connections)}")
-            if len(self.active_connections) == 0 and self.notebook_watcher._is_watching:
-                self.notebook_watcher.stop()
-        except ValueError:
-            pass  # Connection already removed
+            async with self._lock:
+                if websocket in self.active_connections:
+                    self.active_connections.remove(websocket)
+                    if websocket in self.notebook_watchers:
+                        self.notebook_watchers[websocket].stop()
+                        del self.notebook_watchers[websocket]
+                    logger.info(f"Connection closed. Total connections: {len(self.active_connections)}")
+        except Exception as e:
+            logger.error(f"Error during disconnect: {e}")
 
     async def broadcast(self, message: Dict[str, Any]):
         if not self.active_connections:
             logger.warning("No active connections to broadcast to")
             return
         
-        disconnected = []
-        for connection in self.active_connections:
-            try:
-                await connection.send_json(message)
-            except WebSocketDisconnect:
-                disconnected.append(connection)
-            except Exception as e:
-                logger.error(f"Error sending message: {e}")
-                disconnected.append(connection)
-        
-        # Clean up disconnected connections
-        for conn in disconnected:
-            await self.disconnect(conn)
+        async with self._lock:
+            disconnected = []
+            for connection in self.active_connections:
+                try:
+                    await connection.send_json(message)
+                except WebSocketDisconnect:
+                    disconnected.append(connection)
+                except ConnectionResetError:
+                    logger.warning(f"Connection reset detected, removing connection")
+                    disconnected.append(connection)
+                except Exception as e:
+                    logger.error(f"Error sending message: {e}")
+                    disconnected.append(connection)
+            
+            # Clean up disconnected connections
+            for conn in disconnected:
+                await self.disconnect(conn)
 
     def get_user_input(self, prompt: str = "") -> str:
         """Get user input from the web interface"""
@@ -229,17 +245,15 @@ class ConnectionManager:
             logger.error(f"Error processing notebook {notebook_path}: {e}")
             raise
 
-    async def broadcast_notebook_update(self, notebook_path: str):
-        """Broadcast notebook content to all connected clients"""
+    async def broadcast_notebook_update(self, notebook_path: str, target_websocket: WebSocket):
+        """Broadcast notebook content to specific client"""
         try:
-            # Verify file exists and is readable
             if not os.path.isfile(notebook_path):
                 logger.error(f"Notebook file not found: {notebook_path}")
                 return
                 
-            # Process notebook with retries
             max_retries = 3
-            retry_delay = 0.1  # seconds
+            retry_delay = 0.1
             last_error = None
             
             for attempt in range(max_retries):
@@ -253,31 +267,29 @@ class ConnectionManager:
                         continue
                     raise last_error
             
-            # Broadcast update to all clients
-            await self.broadcast({
+            await target_websocket.send_json({
                 "type": "notebook_update",
                 "content": notebook_data,
+                "notebook_path": notebook_path,
                 "timestamp": datetime.datetime.now().isoformat()
             })
             
-            logger.info(f"Successfully broadcast notebook update for {notebook_path}")
+            logger.info(f"Successfully sent notebook update for {notebook_path}")
         except Exception as e:
-            logger.error(f"Error broadcasting notebook update: {e}")
-            await self._send_system_message(f"Error updating notebook: {str(e)}")
+            logger.error(f"Error sending notebook update: {e}")
+            await self._send_system_message(f"Error updating notebook: {str(e)}", websocket=target_websocket)
 
-    def set_current_notebook(self, notebook_path: str):
-        """Set current notebook and start watching it"""
+    def set_notebook_watcher(self, websocket: WebSocket, notebook_path: str):
+        """Set notebook watcher for specific connection"""
         try:
-            # Stop existing watcher if any
-            if self.notebook_watcher._is_watching:
-                self.notebook_watcher.stop()
-            
-            self.current_notebook = notebook_path
-            # Start new watcher
-            self.notebook_watcher.start(notebook_path)
-            logger.info(f"Set current notebook to {notebook_path} and started watching")
+            if websocket in self.notebook_watchers:
+                watcher = self.notebook_watchers[websocket]
+                if watcher._is_watching:
+                    watcher.stop()
+                watcher.start(notebook_path, websocket)
+                logger.info(f"Started watching notebook {notebook_path} for connection")
         except Exception as e:
-            logger.error(f"Error setting current notebook: {e}")
+            logger.error(f"Error setting notebook watcher: {e}")
 
 manager = ConnectionManager()
 
@@ -300,8 +312,6 @@ async def upload_file(file: UploadFile = File(...)):
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        manager.set_current_notebook(str(file_path))
-        
         try:
             notebook_content = await manager.process_notebook(str(file_path))
         except Exception as e:
@@ -323,6 +333,29 @@ async def get():
     with open(templates_dir / "index.html", 'r', encoding='utf-8') as f:
         return HTMLResponse(content=f.read())
 
+@app.get("/download/{filename}")
+async def download_notebook(filename: str):
+    """Handle notebook download"""
+    try:
+        file_path = UPLOAD_DIR / filename
+        if not file_path.exists():
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Notebook file not found"}
+            )
+        
+        return FileResponse(
+            path=file_path,
+            filename=filename,
+            media_type='application/x-ipynb+json'
+        )
+    except Exception as e:
+        logger.error(f"Download error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
 # Create a queue for user input
 user_input_queue = asyncio.Queue()
 
@@ -343,13 +376,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 selected_cells_content = data.get("selected_cells_content", "").strip()
                 user_message = data.get("user_message", "").strip()
                 if user_message.startswith("analyze notebook"):
-                    if manager.current_notebook:
+                    notebook_path = data.get("notebook_path")
+                    if notebook_path:
                         await user_input_queue.put({
-                            "message": f"Please analyze the notebook at {manager.current_notebook}",
+                            "message": f"Please analyze the notebook at {notebook_path}",
                             "selected_cells": selected_cells_content
                         })
                     else:
-                        await manager._send_system_message("No notebook is currently loaded. Please upload one first.")
+                        await manager._send_system_message("No notebook is currently loaded. Please upload one first.", websocket=websocket)
                 else:
                     await user_input_queue.put({
                         "message": user_message,
@@ -361,18 +395,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 if filename:
                     notebook_path = UPLOAD_DIR / filename
                     if notebook_path.exists():
-                        # Only set if it's a different notebook or watcher is not active
-                        if (str(notebook_path) != manager.current_notebook or 
-                            not manager.notebook_watcher._is_watching):
-                            manager.set_current_notebook(str(notebook_path))
-                        # Always send current state
-                        await manager.broadcast_notebook_update(str(notebook_path))
+                        manager.set_notebook_watcher(websocket, str(notebook_path))
+                        await manager.broadcast_notebook_update(str(notebook_path), websocket)
                     else:
-                        await manager._send_system_message(f"Notebook file not found: {filename}")
-            
+                        await manager._send_system_message(f"Notebook file not found: {filename}", websocket=websocket)
+
             elif data.get("type") == "save_notebook":
-                if not manager.current_notebook:
-                    await manager._send_system_message("No notebook is currently loaded. Please upload one first.")
+                notebook_path = data.get("notebook_path")
+                if not notebook_path:
+                    await manager._send_system_message("No notebook path provided.", websocket=websocket)
                     continue
 
                 try:
@@ -389,17 +420,16 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
                         nb.cells.append(cell)
 
-                    with open(manager.current_notebook, "w", encoding="utf-8") as f:
+                    with open(notebook_path, "w", encoding="utf-8") as f:
                         nbformat.write(nb, f)
 
-                    await manager._send_system_message("Notebook saved successfully")
+                    await manager._send_system_message("Notebook saved successfully", websocket=websocket)
                     
                     # Ensure watcher is active after save
-                    if not manager.notebook_watcher._is_watching:
-                        manager.notebook_watcher.start(manager.current_notebook)
+                    manager.set_notebook_watcher(websocket, notebook_path)
                 except Exception as e:
                     logger.error(f"Error saving notebook: {e}")
-                    await manager._send_system_message(f"Error saving notebook: {str(e)}")
+                    await manager._send_system_message(f"Error saving notebook: {str(e)}", websocket=websocket)
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
     except Exception as e:

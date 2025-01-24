@@ -1,6 +1,6 @@
 """Tools configuration and implementation for the agent."""
 import json
-from typing import Annotated, Optional, Dict, Any, Union
+from typing import Annotated, Optional, Dict, Any, Union, List
 from dataclasses import dataclass
 from autogen_core.tools import FunctionTool
 from nbformat.v4 import new_notebook, new_markdown_cell, new_code_cell
@@ -8,6 +8,16 @@ import nbformat
 import asyncio
 import time
 from duckduckgo_search import DDGS
+from openai import AsyncOpenAI
+from transformers import pipeline
+import numpy as np
+from search_notebook import (
+    get_search_engine,
+    format_search_results,
+    NotebookCell,
+    SearchResult,
+    NotebookSearchEngine
+)
 
 @dataclass
 class NotebookEditResult:
@@ -38,12 +48,12 @@ def notebook_content(notebook_path: str) -> str:
     formatted_cells = []
     
     for idx, cell in enumerate(notebook.cells):
-        cell_header = f"\n[Cell {idx} - {cell.cell_type}]"
+        #cell_header = f"\n[Cell {idx} - {cell.cell_type}]"
         cell_content = cell.source.strip()
         if cell_content:
-            formatted_cells.append(f"{cell_header}\n{cell_content}")
+            formatted_cells.append(f"<{cell.cell_type}>\n{cell_content}\n</{cell.cell_type}>")
         else:
-            formatted_cells.append(f"{cell_header}\n<empty cell>")
+            formatted_cells.append(f"<empty cell>")
             
     return "\n".join(formatted_cells)
 
@@ -92,22 +102,24 @@ async def update_cell(
         )
     return str(result)
 
-async def insert_cell(
+async def insert_cell_below(
     notebook_path: Annotated[str, "Path to the notebook file"],
     index: Annotated[int, "Index where to insert the cell"],
     content: Annotated[str, "Content for the new cell"],
     cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
 ) -> str:
-    """Insert a new cell at the specified index."""
+    """Insert a new cell below the specified index."""
     try:
         notebook = load_notebook(notebook_path)
         new_cell = new_markdown_cell(content) if cell_type == 'markdown' else new_code_cell(content)
-        notebook.cells.insert(index, new_cell)
+        notebook.cells.insert(index + 1, new_cell)
         save_notebook(notebook, notebook_path)
         
         result = NotebookEditResult(
             success=True,
-            message=f"Successfully inserted {cell_type} cell at index {index}",
+            message=f"""Successfully inserted {cell_type} cell below index {index}. 
+            The indices of the notebook cells have been changed. 
+            Please update your knowledge of the notebook cells indices before further processing.""",
             cell_content=content
         )
     except Exception as e:
@@ -115,6 +127,36 @@ async def insert_cell(
             success=False,
             message=f"Failed to insert cell: {str(e)}"
         )
+        
+    return str(result)
+
+
+async def insert_cell_above(
+    notebook_path: Annotated[str, "Path to the notebook file"],
+    index: Annotated[int, "Index where to insert the cell"],
+    content: Annotated[str, "Content for the new cell"],
+    cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
+) -> str:
+    """Insert a new cell above the specified index."""
+    try:
+        notebook = load_notebook(notebook_path)
+        new_cell = new_markdown_cell(content) if cell_type == 'markdown' else new_code_cell(content)
+        notebook.cells.insert(index - 1, new_cell)
+        save_notebook(notebook, notebook_path)
+        
+        result = NotebookEditResult(
+            success=True,
+            message=f"""Successfully inserted {cell_type} cell above index {index}. 
+            The indices of the notebook cells have been changed. 
+            Please update your knowledge of the notebook cells indices before further processing.""",
+            cell_content=content
+        )
+    except Exception as e:
+        result = NotebookEditResult(
+            success=False,
+            message=f"Failed to insert cell: {str(e)}"
+        )
+        
     return str(result)
 
 async def delete_cell(
@@ -129,7 +171,9 @@ async def delete_cell(
             save_notebook(notebook, notebook_path)
             result = NotebookEditResult(
                 success=True,
-                message=f"Successfully deleted cell at index {index}"
+                message=f"""Successfully deleted cell at index {index}.
+                The indices of the notebook cells have been changed. 
+                Please update your knowledge of the notebook cells indices before further processing."""
             )
         else:
             result = NotebookEditResult(
@@ -147,7 +191,7 @@ async def get_cell_content(
     notebook_path: Annotated[str, "Path to the notebook file"],
     index: Annotated[int, "Index of the cell to retrieve"]
 ) -> str:
-    """Get the content of a cell at the specified index."""
+    """search the content of a cell at the specified index."""
     try:
         notebook = load_notebook(notebook_path)
         if 0 <= index < len(notebook.cells):
@@ -199,6 +243,29 @@ def search_with_retry(query, max_results=10, max_retries=3):
                 return f"Search failed after {max_retries} attempts: {str(e)}"
             time.sleep(1)  # Wait 1 second before retry
 
+async def search_notebook(
+    notebook_path: Annotated[str, "Path to the notebook file"],
+    query: Annotated[str, "Search query text"],
+    keywords: Annotated[Optional[List[str]], "List of keywords for keyword search"],
+    top_k: Annotated[int, "Maximum number of results to return"] = 10,
+    min_score: Annotated[float, "Minimum similarity score"] = 0.3,
+    match_all: Annotated[bool, "For keyword search: whether to require all keywords to match"] = False
+) -> str:
+    """Search within a Jupyter notebook using semantic search or keyword matching. Return matching cells with their content."""
+    try:
+        search_engine = get_search_engine()
+        search_engine.index_notebook(notebook_path)
+        
+        results_semantic = search_engine.search(query, top_k, min_score)
+        
+        results_keywords = search_engine.keyword_search(keywords, match_all)
+        
+
+        return await format_search_results(results_semantic + results_keywords )
+        
+    except Exception as e:
+        return f"Error searching notebook: {str(e)}"
+
 tools = [{
     "type": "function",
     "function": {
@@ -225,7 +292,7 @@ tools = [{
                 "notebook_path": {"type": "string", "description": "Path to the notebook file"},
                 "cell_index": {"type": "integer", "description": "Index of the cell to update"},
                 "content": {"type": "string", "description": "New content for the cell"},
-                "cell_type": {"type": "string", "enum": ["markdown", "code"], "default": "markdown", "description": "Type of cell ('markdown' or 'code')"}
+                "cell_type": {"type": "string", "enum": ["markdown", "code"], "description": "Type of cell ('markdown' or 'code')"}
             },
             "required": ["notebook_path", "cell_index", "content", "cell_type"],
             "additionalProperties": False
@@ -235,15 +302,33 @@ tools = [{
 }, {
     "type": "function",
     "function": {
-        "name": "insert_cell",
-        "description": "Insert a new cell at the specified index in a Jupyter notebook.",
+        "name": "insert_cell_below",
+        "description": "Insert a new cell below the specified index in a Jupyter notebook.",
         "parameters": {
             "type": "object",
             "properties": {
                 "notebook_path": {"type": "string", "description": "Path to the notebook file"},
-                "index": {"type": "integer", "description": "Index where to insert the cell"},
+                "index": {"type": "integer", "description": "Index where to insert a new cell below"},
                 "content": {"type": "string", "description": "Content for the new cell"},
-                "cell_type": {"type": "string", "enum": ["markdown", "code"], "default": "markdown", "description": "Type of cell ('markdown' or 'code')"}
+                "cell_type": {"type": "string", "enum": ["markdown", "code"], "description": "Type of cell ('markdown' or 'code')"}
+            },
+            "required": ["notebook_path", "index", "content", "cell_type"],
+            "additionalProperties": False
+        },
+        "strict": True
+    }
+}, {
+    "type": "function",
+    "function": {
+        "name": "insert_cell_above",
+        "description": "Insert a new cell above the specified index in a Jupyter notebook.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "notebook_path": {"type": "string", "description": "Path to the notebook file"},
+                "index": {"type": "integer", "description": "Index where to insert a new cell above"},
+                "content": {"type": "string", "description": "Content for the new cell"},
+                "cell_type": {"type": "string", "enum": ["markdown", "code"], "description": "Type of cell ('markdown' or 'code')"}
             },
             "required": ["notebook_path", "index", "content", "cell_type"],
             "additionalProperties": False
@@ -282,22 +367,23 @@ tools = [{
         },
         "strict": True
     }
-}, {
-    "type": "function", 
-    "function": {
-        "name": "notebook_content",
-        "description": "Get the content of the entire notebook in a well-structured format.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "notebook_path": {"type": "string", "description": "Path to the notebook file"}
-            },
-            "required": ["notebook_path"],
-            "additionalProperties": False
-        },
-        "strict": True
-    }
-}, {
+}, #{
+   # "type": "function", 
+   # "function": {
+   #     "name": "notebook_content",
+   #     "description": "Get the content of the entire notebook in a well-structured format.",
+   #     "parameters": {
+   #         "type": "object",
+   #         "properties": {
+   #             "notebook_path": {"type": "string", "description": "Path to the notebook file"}
+   #         },
+   #         "required": ["notebook_path"],
+   #         "additionalProperties": False
+   #     },
+   #     "strict": True
+   # }
+#}, 
+   {
     "type": "function",
     "function": {
         "name": "clear_notebook_output",
@@ -338,6 +424,37 @@ tools = [{
         },
         "strict": True
     }
+}, {
+    "type": "function",
+    "function": {
+        "name": "search_notebook",
+        "description": "Search within a Jupyter notebook using semantic search or keyword matching",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "notebook_path": {
+                    "type": "string",
+                    "description": "Path to the notebook file"
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Query text used semantic search"
+                },
+                "keywords": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of keywords for keyword search"
+                }
+            },
+            "required": [
+                "notebook_path",
+                "query",
+                "keywords"
+            ],
+            "additionalProperties": False
+        },
+        "strict": True
+    }
 }]
 
 async def call_function(name, args):
@@ -362,12 +479,14 @@ async def call_function(name, args):
         function_map = {
             "get_weather": get_weather,
             "update_cell": update_cell,
-            "insert_cell": insert_cell,
+            "insert_cell_below": insert_cell_below,
+            "insert_cell_above": insert_cell_above,
             "delete_cell": delete_cell,
             "get_cell_content": get_cell_content,
             "notebook_content": notebook_content,
             "clear_notebook_output": clear_notebook_output,
-            "search_with_retry": search_with_retry
+            "search_with_retry": search_with_retry,
+            "search_notebook": search_notebook
         }
         
         if name not in function_map:

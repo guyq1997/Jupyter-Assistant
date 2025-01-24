@@ -7,6 +7,7 @@ import { NotebookUI } from './notebook/ui.js';
 class NotebookManager {
     constructor() {
         this.notebook = null;
+        this.currentNotebookPath = null;
         this.editorManager = new EditorManager();
         this.cellManager = new CellManager();
         this.selectionManager = new SelectionManager();
@@ -32,11 +33,13 @@ class NotebookManager {
     }
 
     // Display notebook
-    displayNotebook(notebook) {
+    displayNotebook(notebook, notebookPath = null) {
         if (!notebook || !notebook.cells) {
             console.error('Invalid notebook data received');
             return;
         }
+
+        this.currentNotebookPath = notebookPath;
 
         // Save current editor states and selections
         const currentState = {
@@ -157,17 +160,18 @@ class NotebookManager {
 
     // Save notebook
     saveNotebook() {
-        if (!this.notebook) return;
+        if (!this.notebook || !this.currentNotebookPath) return;
         
         // Update all cell sources from editors
         this.notebook.cells.forEach((cell, index) => {
             cell.source = this.editorManager.getCellContent(cell, index);
         });
         
-        // Send to server
+        // Send to server with notebook path
         ws.send(JSON.stringify({
             type: 'save_notebook',
-            content: this.notebook
+            content: this.notebook,
+            notebook_path: this.currentNotebookPath
         }));
         
         this.ui.markAsSaved();
