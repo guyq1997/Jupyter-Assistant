@@ -53,7 +53,7 @@ class Agent:
             messages=messages,
             tools=tools,
             tool_choice="auto",
-            parallel_tool_calls=False,
+            #parallel_tool_calls=False,
             stream=True
         )
 
@@ -124,7 +124,7 @@ class Agent:
                     name = tool_call["function"]["name"] or ""
                     args = tool_call["function"]["arguments"] or "{}"
                     tool_result = await call_function(name, args)
-                    tool_message = f"Calling tool {name} with arguments {args}"
+                    tool_message = f"{counter}. Time: Calling tool {name} with arguments {args}"
                     await broadcast_message("Assistant", f"\n\n🔧 {tool_message}\n\n")
                     await asyncio.sleep(0)
                 except Exception as e:
@@ -142,7 +142,7 @@ class Agent:
 
             # Log messages before creating next completion
             print("Debug - Messages before next completion:", json.dumps(messages, indent=2))
-            if counter == 5:
+            if counter == 10:
                 # Get the next assistant response with streaming
                 response_2 = client.chat.completions.create(
                     model="gpt-4o",
@@ -231,6 +231,12 @@ class Agent:
         # After processing all tool calls and getting final response
         # Update message history with the complete conversation
         self.message_history = messages.copy()
+
+        print("Agent: Preparing to send process_query completion message")
+        # Send process_query completion message
+        await broadcast_message("System", "process_query_complete")
+        print("Agent: Completion message sent")
+        
         return
 
 # Function to update notebook display
@@ -266,13 +272,13 @@ async def main():
     
     for attempt in range(max_retries):
         try:
-            config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
+            config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="error")
             server = uvicorn.Server(config)
             
             # Start the server in a separate task
             server_task = asyncio.create_task(server.serve())
             
-            print(f"Server starting on http://localhost:{port}")
+            print(f"Server starting on http://0.0.0.0:{port}")
             
             # Give the server a moment to start
             await asyncio.sleep(1)

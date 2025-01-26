@@ -1,3 +1,10 @@
+@import 'base.css';
+@import 'layout.css';
+@import 'messages.css';
+@import 'notebook.css';
+@import 'cells.css';
+@import 'diff.css';
+
 body {
     font-family: Arial, sans-serif;
     margin: 0;
@@ -426,70 +433,98 @@ body {
 
 /* Markdown cell styles */
 .notebook-cell.markdown-cell {
-    border: none;
-    border-radius: 0;
-    margin-bottom: 16px;
-    background-color: transparent;
+    margin: 8px 0;
     position: relative;
-    display: flex;
-    border-left: 4px solid transparent;
 }
 
 .notebook-cell.markdown-cell .cell-content-wrapper {
     margin-right: 30px;
 }
 
+.notebook-cell-content.markdown {
+    position: relative;
+    margin: 0;
+    border-radius: 4px;
+}
+
+.markdown-preview-container {
+    padding: 8px;
+    min-height: 30px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    background-color: transparent;
+}
+
+.markdown-preview-container:hover,
+.markdown-preview-container.hover {
+    border-color: #ddd;
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.markdown-editor-container {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #fff;
+}
+
 /* Hide toolbar by default */
 .notebook-cell.markdown-cell .cell-toolbar {
     display: none;
-    visibility: hidden;
-    height: 0;
-    overflow: hidden;
-    padding: 0;
-    margin: 0;
+}
+
+/* Show toolbar when editing */
+.notebook-cell.markdown-cell.editing .cell-toolbar {
+    display: flex;
 }
 
 /* Non-editing state */
 .notebook-cell.markdown-cell:not(.editing) {
-    background: none !important;
-    box-shadow: none !important;
+    background: none;
+    box-shadow: none;
 }
 
-.notebook-cell.markdown-cell:not(.editing) .cell-content {
-    padding: 0;
-}
-
-.notebook-cell.markdown-cell:not(.editing) .cell-toolbar {
-    display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    overflow: hidden !important;
-    padding: 0 !important;
-    margin: 0 !important;
-}
-
-/* Remove the hover-only display of select area */
-.notebook-cell.markdown-cell:not(.editing) .cell-select-area {
-    display: flex;
-    opacity: 1;
-}
-
-/* Editing state styles */
+/* Editing state */
 .notebook-cell.markdown-cell.editing {
+    background-color: white;
     border: 1px solid #e1e4e8;
     border-radius: 6px;
-    background-color: white;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 8px;
 }
 
-/* Show toolbar only when editing */
-.notebook-cell.markdown-cell.editing .cell-toolbar {
-    display: flex !important;
-    visibility: visible !important;
+.notebook-cell.markdown-cell.editing .markdown-preview-container {
+    display: none;
+}
+
+.notebook-cell.markdown-cell.editing .markdown-editor-container {
+    display: block;
+}
+
+/* SimpleMDE overrides */
+.CodeMirror {
     height: auto !important;
-    overflow: visible !important;
-    padding: 4px 8px !important;
-    margin: 0 !important;
+    min-height: 100px;
+    border: 1px solid #ddd !important;
+    border-radius: 4px;
+}
+
+/* Remove any conflicting styles */
+.cell-content.markdown,
+.markdown-preview,
+.markdown-editor {
+    display: none !important;
+}
+
+/* Ensure proper z-index for markdown cells */
+.notebook-cell.markdown-cell {
+    z-index: 1;
+}
+
+.notebook-cell.markdown-cell.editing {
+    z-index: 2;
 }
 
 /* Code cell specific styles */
@@ -668,4 +703,307 @@ body {
 
 #clear-history-btn i {
     font-size: 0.9em;
-} 
+}
+
+/* Notification styles */
+.changes-notification {
+    background-color: #fff3cd;
+    border: 1px solid #ffeeba;
+    color: #856404;
+    padding: 10px 15px;
+    margin: 10px 0;
+    border-radius: 4px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.error-notification {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 10px 15px;
+    margin: 10px 0;
+    border-radius: 4px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.notification-content {
+    margin: 0;
+}
+
+.notification-content p {
+    margin: 5px 0;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.fade-out {
+    animation: fadeOut 0.5s ease-out forwards;
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+/* Change confirmation styles */
+.change-confirmation {
+    margin: 10px 0;
+    padding: 15px;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    background-color: #f8f9fa;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    animation: slideIn 0.3s ease-out;
+    position: relative;
+}
+
+.change-confirmation::before {
+    content: "Pending Changes";
+    position: absolute;
+    top: -12px;
+    left: 10px;
+    background-color: #fff3cd;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+
+.notebook-cell.pending-deletion {
+    background-color: rgba(255, 0, 0, 0.15);
+    border-left: 4px solid #dc3545;
+    position: relative;
+    opacity: 0.8;
+}
+
+.notebook-cell.pending-deletion::before {
+    content: "PENDING DELETION";
+    position: absolute;
+    top: 0;
+    right: 0;
+    background-color: #dc3545;
+    color: white;
+    padding: 2px 8px;
+    font-size: 12px;
+    border-bottom-left-radius: 4px;
+    z-index: 1;
+}
+
+.notebook-cell.pending-deletion .cell-content-wrapper {
+    text-decoration: line-through;
+    text-decoration-color: #dc3545;
+    text-decoration-thickness: 2px;
+}
+
+/* Base styles for pending additions */
+.notebook-cell.pending-addition {
+    border: 2px solid #4CAF50;
+    position: relative;
+}
+
+/* NEW indicator for all pending additions */
+.notebook-cell.pending-addition::before {
+    content: "NEW";
+    position: absolute;
+    top: 0;
+    right: 35px;
+    background-color: #4CAF50;
+    color: white;
+    padding: 2px 8px;
+    font-size: 12px;
+    border-bottom-left-radius: 4px;
+    z-index: 1;
+}
+
+/* Base diff view styles */
+.notebook-cell .diff-view {
+    margin: 8px;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+/* Base new content styles */
+.notebook-cell .diff-view .new-content {
+    background-color: #E8F5E9;
+    border: 1px solid #4CAF50;
+    padding: 16px;
+    margin: 0;
+    border-radius: 4px;
+    position: relative;
+}
+
+/* Code cell specific styles */
+.notebook-cell.code-cell .diff-view .new-content {
+    font-family: 'Consolas', 'Monaco', monospace;
+    padding-left: 30px;
+}
+
+.notebook-cell.code-cell .diff-view .new-content::before {
+    content: "+";
+    position: absolute;
+    left: 10px;
+    color: #28a745;
+    font-weight: bold;
+}
+
+/* Markdown cell specific styles */
+.notebook-cell.markdown-cell .diff-view .new-content {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+    padding: 16px;
+}
+
+.notebook-cell.markdown-cell .diff-view .new-content::before {
+    display: none;
+}
+
+/* Markdown preview content spacing */
+.notebook-cell.markdown-cell .diff-view .new-content.markdown-preview h1,
+.notebook-cell.markdown-cell .diff-view .new-content.markdown-preview h2,
+.notebook-cell.markdown-cell .diff-view .new-content.markdown-preview h3 {
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+.notebook-cell.markdown-cell .diff-view .new-content.markdown-preview p {
+    margin-bottom: 16px;
+}
+
+/* Deleted content styles */
+.notebook-cell .diff-view .deleted-content {
+    background-color: #FFEBEE;
+    border: 1px solid #ffcdd2;
+    padding: 10px 10px 10px 30px;
+    margin: 5px 0;
+    border-radius: 4px;
+    text-decoration: line-through;
+    color: #b71c1c;
+    position: relative;
+}
+
+.notebook-cell .diff-view .deleted-content::before {
+    content: "-";
+    position: absolute;
+    left: 10px;
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.diff-view {
+    margin: 15px 0;
+    font-family: 'Consolas', 'Monaco', monospace;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.diff-view pre {
+    margin: 5px 0;
+    padding: 12px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.deleted-content {
+    background-color: #ffebee;
+    border: 1px solid #ffcdd2;
+    text-decoration: line-through;
+    color: #b71c1c;
+    position: relative;
+    padding-left: 30px;
+}
+
+.deleted-content::before {
+    content: "-";
+    position: absolute;
+    left: 10px;
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.new-content {
+    background-color: #e8f5e9;
+    border: 1px solid #c8e6c9;
+    color: #1b5e20;
+    position: relative;
+    padding-left: 30px;
+}
+
+.new-content::before {
+    content: "+";
+    position: absolute;
+    left: 10px;
+    color: #28a745;
+    font-weight: bold;
+}
+
+/* Batch confirmation styles */
+.batch-confirmation {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 1000;
+    max-width: 400px;
+}
+
+.batch-message {
+    margin-bottom: 10px;
+    font-weight: 500;
+    color: #495057;
+}
+
+.batch-confirmation-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.confirm-all-changes {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.confirm-all-changes:hover {
+    background-color: #218838;
+}
+
+.cancel-all-changes {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.cancel-all-changes:hover {
+    background-color: #c82333;
+}

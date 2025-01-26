@@ -1,0 +1,143 @@
+/* Message styles */
+.message {
+    margin-bottom: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* User message styles */
+.user-message {
+    background-color: #ffffff;
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 20px;
+}
+
+.user-message .agent-name {
+    display: block;
+    font-weight: 600;
+    color: #1a73e8;
+    margin-bottom: 4px;
+}
+
+/* Assistant message styles */
+.assistant-message {
+    color: #1f1f1f;
+    padding: 12px 0;
+    max-width: 85%;
+}
+
+.assistant-message .message-content {
+    margin-top: 0;
+}
+
+/* Tool message styles */
+.tool-message {
+    background-color: #f5f5f5;
+    border-left: 3px solid #666;
+    font-family: monospace;
+    margin: 8px 0;
+}
+
+.tool-message .message-content {
+    color: #666;
+    font-size: 0.9em;
+}
+
+/* Message content styles */
+.message-content {
+    margin-top: 5px;
+    line-height: 1.5;
+}
+
+.message-content pre {
+    background-color: #ffffff;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+    border: 1px solid #e1e4e8;
+}
+
+.message-content code {
+    background-color: #f1f1f1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+.message-content p {
+    margin: 0.5em 0;
+}
+
+.message-content ul, 
+.message-content ol {
+    margin: 0.5em 0;
+    padding-left: 20px;
+}
+
+/* Message metadata */
+.agent-name {
+    font-weight: bold;
+    color: #007bff;
+}
+
+.timestamp {
+    font-size: 0.8em;
+    color: #6c757d;
+}
+
+/* Input styles */
+#user-input {
+    flex-grow: 1;
+    padding: 10px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 16px;
+    resize: none;
+    min-height: 40px;
+    max-height: 120px;
+}
+
+#send-button {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#send-button:hover {
+    background-color: #0056b3;
+}
+
+#send-button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+}
+
+/* Clear history button */
+#clear-history-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9em;
+}
+
+#clear-history-btn:hover {
+    background-color: #c82333;
+}
+
+#clear-history-btn i {
+    font-size: 0.9em;
+} 

@@ -90,24 +90,53 @@
         // Load Monaco Editor
         require(['vs/editor/editor.main'], function() {
             console.log('Monaco editor loaded');
-            // Now load our application scripts
-            const notebookScript = document.createElement('script');
-            notebookScript.type = 'module';
-            notebookScript.src = '/static/js/notebook.js';
-            document.body.appendChild(notebookScript);
+            
+            // Function to load scripts sequentially
+            function loadScriptsSequentially(scripts) {
+                return scripts.reduce((promise, script) => {
+                    return promise.then(() => {
+                        return new Promise((resolve) => {
+                            const scriptElement = document.createElement('script');
+                            scriptElement.type = 'module';
+                            scriptElement.src = script;
+                            scriptElement.onload = resolve;
+                            document.body.appendChild(scriptElement);
+                        });
+                    });
+                }, Promise.resolve());
+            }
 
-            const chatScript = document.createElement('script');
-            chatScript.src = '/static/js/chat.js';
-            chatScript.onload = function() {
-                // Initialize chat when everything is loaded
-                if (typeof initialize === 'function') {
-                    console.log('Initializing chat...');
-                    initialize();
-                } else {
-                    console.error('chat initialize function not found');
-                }
-            };
-            document.body.appendChild(chatScript);
+            // Define script groups
+            const coreModules = [
+                '/static/js/core/config.js',
+                '/static/js/core/websocket.js',
+                '/static/js/core/messageHandler.js',
+                '/static/js/core/notebookIntegration.js'
+            ];
+
+            const managerModules = [
+                '/static/js/managers/cell.js',
+                '/static/js/managers/editor.js',
+                '/static/js/managers/selection.js',
+                '/static/js/managers/DiffUIManager.js',
+                '/static/js/managers/BatchConfirmationManager.js'
+            ];
+
+            const mainModules = [
+                '/static/js/notebook/NotebookUIBase.js',
+                '/static/js/notebook/NotebookUI.js',
+                '/static/js/notebook/notebook.js',
+                '/static/js/ui/chat/chat.js'
+            ];
+
+            // Load all scripts in sequence
+            loadScriptsSequentially([...coreModules, ...managerModules, ...mainModules])
+                .then(() => {
+                    console.log('All scripts loaded successfully');
+                })
+                .catch((error) => {
+                    console.error('Error loading scripts:', error);
+                });
         });
     </script>
 </body>

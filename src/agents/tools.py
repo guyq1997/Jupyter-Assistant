@@ -18,6 +18,9 @@ from search_notebook import (
     SearchResult,
     NotebookSearchEngine
 )
+from search_engine import search_with_retry
+from screenshot_utils import take_screenshot, take_screenshot_sync
+from web_scraper import process_urls, validate_url
 
 @dataclass
 class NotebookEditResult:
@@ -40,8 +43,8 @@ def load_notebook(notebook_path: str) -> nbformat.NotebookNode:
     except FileNotFoundError:
         return new_notebook()
 
-def notebook_content(notebook_path: str) -> str:
-    """Get the content of the notebook in a well-structured format.
+def get_ten_cells(notebook_path: str, cell_indices: List[int]) -> str:
+    """Get the content of ten cells in the notebook in a well-structured format.
     Returns a string with each cell's content prefixed by its index and type.
     """
     notebook = load_notebook(notebook_path)
@@ -71,36 +74,61 @@ def clear_notebook_output(notebook_path: str) -> None:
             cell.execution_count = None
     save_notebook(notebook, notebook_path)
 
+async def propose_notebook_change(notebook_path: str, changes: List[Dict[str, Any]]) -> None:
+    """Send proposed changes to the client through WebSocket."""
+    from web_server import manager
+    
+    try:
+        data = {
+            "type": "propose_changes",
+            "changes": changes,
+            "notebook_path": notebook_path
+        }
+        await manager.broadcast(data)
+        return NotebookEditResult(
+            success=True,
+            message="Changes proposed successfully. User will decide if they want to apply them."
+        )
+    except Exception as e:
+        return NotebookEditResult(
+            success=False,
+            message=f"Failed to propose changes: {str(e)}"
+        )
+
 async def update_cell(
     notebook_path: Annotated[str, "Path to the notebook file"],
     cell_index: Annotated[int, "Index of the cell to update"],
     content: Annotated[str, "New content for the cell"],
     cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
 ) -> str:
-    """Update a cell's content at the specified index."""
+    """Propose an update to a cell's content at the specified index."""
     try:
         notebook = load_notebook(notebook_path)
         
         if cell_index >= len(notebook.cells):
-            # Extend notebook if needed
-            while len(notebook.cells) <= cell_index:
-                notebook.cells.append(new_markdown_cell(''))
+            return str(NotebookEditResult(
+                success=False,
+                message=f"Cell index {cell_index} out of range"
+            ))
         
-        new_cell = new_markdown_cell(content) if cell_type == 'markdown' else new_code_cell(content)
-        notebook.cells[cell_index] = new_cell
-        save_notebook(notebook, notebook_path)
+        old_content = notebook.cells[cell_index].source
         
-        result = NotebookEditResult(
-            success=True,
-            message=f"Successfully updated {cell_type} cell at index {cell_index}",
-            cell_content=content
-        )
+        changes = [{
+            "type": "update",
+            "index": cell_index,
+            "old_content": old_content,
+            "new_content": content,
+            "cell_type": cell_type
+        }]
+        
+        result = await propose_notebook_change(notebook_path, changes)
+        return str(result)
+        
     except Exception as e:
-        result = NotebookEditResult(
+        return str(NotebookEditResult(
             success=False,
-            message=f"Failed to update cell: {str(e)}"
-        )
-    return str(result)
+            message=f"Failed to propose cell update: {str(e)}"
+        ))
 
 async def insert_cell_below(
     notebook_path: Annotated[str, "Path to the notebook file"],
@@ -108,28 +136,26 @@ async def insert_cell_below(
     content: Annotated[str, "Content for the new cell"],
     cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
 ) -> str:
-    """Insert a new cell below the specified index."""
+    """Propose inserting a new cell below the specified index."""
     try:
         notebook = load_notebook(notebook_path)
-        new_cell = new_markdown_cell(content) if cell_type == 'markdown' else new_code_cell(content)
-        notebook.cells.insert(index + 1, new_cell)
-        save_notebook(notebook, notebook_path)
         
-        result = NotebookEditResult(
-            success=True,
-            message=f"""Successfully inserted {cell_type} cell below index {index}. 
-            The indices of the notebook cells have been changed. 
-            Please update your knowledge of the notebook cells indices before further processing.""",
-            cell_content=content
-        )
+        changes = [{
+            "type": "add",
+            "index": index + 1,
+            "old_content": None,
+            "new_content": content,
+            "cell_type": cell_type
+        }]
+        
+        result = await propose_notebook_change(notebook_path, changes)
+        return str(result)
+        
     except Exception as e:
-        result = NotebookEditResult(
+        return str(NotebookEditResult(
             success=False,
-            message=f"Failed to insert cell: {str(e)}"
-        )
-        
-    return str(result)
-
+            message=f"Failed to propose cell insertion: {str(e)}"
+        ))
 
 async def insert_cell_above(
     notebook_path: Annotated[str, "Path to the notebook file"],
@@ -137,55 +163,60 @@ async def insert_cell_above(
     content: Annotated[str, "Content for the new cell"],
     cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
 ) -> str:
-    """Insert a new cell above the specified index."""
+    """Propose inserting a new cell above the specified index."""
     try:
         notebook = load_notebook(notebook_path)
-        new_cell = new_markdown_cell(content) if cell_type == 'markdown' else new_code_cell(content)
-        notebook.cells.insert(index - 1, new_cell)
-        save_notebook(notebook, notebook_path)
         
-        result = NotebookEditResult(
-            success=True,
-            message=f"""Successfully inserted {cell_type} cell above index {index}. 
-            The indices of the notebook cells have been changed. 
-            Please update your knowledge of the notebook cells indices before further processing.""",
-            cell_content=content
-        )
+        changes = [{
+            "type": "add",
+            "index": index,
+            "old_content": None,
+            "new_content": content,
+            "cell_type": cell_type
+        }]
+        
+        result = await propose_notebook_change(notebook_path, changes)
+        return str(result)
+        
     except Exception as e:
-        result = NotebookEditResult(
+        return str(NotebookEditResult(
             success=False,
-            message=f"Failed to insert cell: {str(e)}"
-        )
-        
-    return str(result)
+            message=f"Failed to propose cell insertion: {str(e)}"
+        ))
 
 async def delete_cell(
     notebook_path: Annotated[str, "Path to the notebook file"],
     index: Annotated[int, "Index of the cell to delete"]
 ) -> str:
-    """Delete a cell at the specified index."""
+    """Propose deleting a cell at the specified index."""
     try:
         notebook = load_notebook(notebook_path)
+        
         if 0 <= index < len(notebook.cells):
-            del notebook.cells[index]
-            save_notebook(notebook, notebook_path)
-            result = NotebookEditResult(
-                success=True,
-                message=f"""Successfully deleted cell at index {index}.
-                The indices of the notebook cells have been changed. 
-                Please update your knowledge of the notebook cells indices before further processing."""
-            )
+            old_content = notebook.cells[index].source
+            cell_type = notebook.cells[index].cell_type
+            
+            changes = [{
+                "type": "delete",
+                "index": index,
+                "old_content": old_content,
+                "new_content": None,
+                "cell_type": cell_type
+            }]
+            
+            result = await propose_notebook_change(notebook_path, changes)
+            return str(result)
         else:
-            result = NotebookEditResult(
+            return str(NotebookEditResult(
                 success=False,
                 message=f"Cell index {index} out of range"
-            )
+            ))
+            
     except Exception as e:
-        result = NotebookEditResult(
+        return str(NotebookEditResult(
             success=False,
-            message=f"Failed to delete cell: {str(e)}"
-        )
-    return str(result)
+            message=f"Failed to propose cell deletion: {str(e)}"
+        ))
 
 async def get_cell_content(
     notebook_path: Annotated[str, "Path to the notebook file"],
@@ -216,32 +247,7 @@ async def get_cell_content(
 def get_weather(location):
     return "Failed to get weather"
 
-def search_with_retry(query, max_results=10, max_retries=3):
-    """
-    Search using DuckDuckGo and return results with URLs and text snippets.
-    """
-    for attempt in range(max_retries):
-        try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=max_results))
-                
-            if not results:
-                return "No results found"
-            
-            # Format results into a readable string
-            formatted_results = []
-            for i, r in enumerate(results, 1):
-                formatted_results.append(f"\n=== Result {i} ===")
-                formatted_results.append(f"URL: {r.get('href', 'N/A')}")
-                formatted_results.append(f"Title: {r.get('title', 'N/A')}")
-                formatted_results.append(f"Snippet: {r.get('body', 'N/A')}")
-            
-            return "\n".join(formatted_results)
-                
-        except Exception as e:
-            if attempt == max_retries - 1:  # If last attempt
-                return f"Search failed after {max_retries} attempts: {str(e)}"
-            time.sleep(1)  # Wait 1 second before retry
+
 
 async def search_notebook(
     notebook_path: Annotated[str, "Path to the notebook file"],
@@ -266,22 +272,57 @@ async def search_notebook(
     except Exception as e:
         return f"Error searching notebook: {str(e)}"
 
+async def scrape_websites(
+    urls: Annotated[List[str], "List of URLs to scrape"],
+    max_concurrent: Annotated[int, "Maximum number of concurrent browser instances"] = 5
+) -> str:
+    """Scrape content from multiple websites concurrently and return formatted text content."""
+    try:
+        # Validate URLs
+        valid_urls = [url for url in urls if validate_url(url)]
+        if not valid_urls:
+            return "Error: No valid URLs provided"
+            
+        # Process URLs and get results
+        results = await process_urls(valid_urls, max_concurrent)
+        
+        # Format output
+        formatted_output = []
+        for url, text in zip(valid_urls, results):
+            formatted_output.append(f"\n=== Content from {url} ===\n{text}\n{'=' * 80}")
+            
+        return "\n".join(formatted_output)
+        
+    except Exception as e:
+        return f"Error during web scraping: {str(e)}"
+
+async def take_webpage_screenshot(
+    url: Annotated[str, "The URL to take a screenshot of"],
+    output_path: Annotated[Optional[str], "Path to save the screenshot. If None, saves to a temporary file"] = None,
+    width: Annotated[int, "Viewport width"] = 1280,
+    height: Annotated[int, "Viewport height"] = 720
+) -> str:
+    """Take a screenshot of a webpage using Playwright and return the path to the saved image."""
+    try:
+        result = await take_screenshot(url, output_path, width, height)
+        return f"Screenshot saved successfully to: {result}"
+    except Exception as e:
+        return f"Error taking screenshot: {str(e)}"
+
+def take_webpage_screenshot_sync(
+    url: Annotated[str, "The URL to take a screenshot of"],
+    output_path: Annotated[Optional[str], "Path to save the screenshot. If None, saves to a temporary file"] = None,
+    width: Annotated[int, "Viewport width"] = 1280,
+    height: Annotated[int, "Viewport height"] = 720
+) -> str:
+    """Take a screenshot of a webpage synchronously using Playwright and return the path to the saved image."""
+    try:
+        result = take_screenshot_sync(url, output_path, width, height)
+        return f"Screenshot saved successfully to: {result}"
+    except Exception as e:
+        return f"Error taking screenshot: {str(e)}"
+
 tools = [{
-    "type": "function",
-    "function": {
-        "name": "get_weather",
-        "description": "Get current temperature for provided location in celsius.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "location": {"type": "string"},
-            },
-            "required": ["location"],
-            "additionalProperties": False
-        },
-        "strict": True
-    }
-}, {
     "type": "function",
     "function": {
         "name": "update_cell",
@@ -367,22 +408,23 @@ tools = [{
         },
         "strict": True
     }
-}, #{
-   # "type": "function", 
-   # "function": {
-   #     "name": "notebook_content",
-   #     "description": "Get the content of the entire notebook in a well-structured format.",
-   #     "parameters": {
-   #         "type": "object",
-   #         "properties": {
-   #             "notebook_path": {"type": "string", "description": "Path to the notebook file"}
-   #         },
-   #         "required": ["notebook_path"],
-   #         "additionalProperties": False
-   #     },
-   #     "strict": True
-   # }
-#}, 
+}, {
+    "type": "function", 
+    "function": {
+        "name": "get_ten_cells",
+        "description": "Get the content of ten cells in the notebook in a well-structured format.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "notebook_path": {"type": "string", "description": "Path to the notebook file"},
+                "cell_indices": {"type": "array", "items": {"type": "integer"}, "description": "List of cell indices to retrieve"}
+            },
+            "required": ["notebook_path", "cell_indices"],
+            "additionalProperties": False
+        },
+        "strict": True
+    }
+}, 
    {
     "type": "function",
     "function": {
@@ -455,6 +497,89 @@ tools = [{
         },
         "strict": True
     }
+}, {
+    "type": "function",
+    "function": {
+        "name": "take_webpage_screenshot",
+        "description": "Take a screenshot of a webpage using Playwright and return the path to the saved image",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL to take a screenshot of"
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Path to save the screenshot. If None, saves to a temporary file."
+                },
+                "width": {
+                    "type": "integer",
+                    "description": "Viewport width. Defaults to 1280."
+                },
+                "height": {
+                    "type": "integer",
+                    "description": "Viewport height. Defaults to 720."
+                }
+            },
+            "required": ["url", "output_path", "width", "height"],
+            "additionalProperties": False
+        },
+        "strict": True
+    }
+}, {
+    "type": "function",
+    "function": {
+        "name": "take_webpage_screenshot_sync",
+        "description": "Take a screenshot of a webpage synchronously using Playwright and return the path to the saved image",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL to take a screenshot of"
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Path to save the screenshot. If None, saves to a temporary file."
+                },
+                "width": {
+                    "type": "integer",
+                    "description": "Viewport width. Defaults to 1280."
+                },
+                "height": {
+                    "type": "integer",
+                    "description": "Viewport height. Defaults to 720."
+                }
+            },
+            "required": ["url", "output_path", "width", "height"],
+            "additionalProperties": False
+        },
+        "strict": True
+    }
+}, {
+    "type": "function",
+    "function": {
+        "name": "scrape_websites",
+        "description": "Scrape content from multiple websites concurrently and return formatted text content",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "urls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of URLs to scrape"
+                },
+                "max_concurrent": {
+                    "type": "integer",
+                    "description": "Maximum number of concurrent browser instances. Defaults to 5."
+                }
+            },
+            "required": ["urls", "max_concurrent"],
+            "additionalProperties": False
+        },
+        "strict": True
+    }
 }]
 
 async def call_function(name, args):
@@ -477,16 +602,18 @@ async def call_function(name, args):
     try:
         # Map function names to their implementations
         function_map = {
-            "get_weather": get_weather,
             "update_cell": update_cell,
             "insert_cell_below": insert_cell_below,
             "insert_cell_above": insert_cell_above,
             "delete_cell": delete_cell,
             "get_cell_content": get_cell_content,
-            "notebook_content": notebook_content,
+            "get_ten_cells": get_ten_cells,
             "clear_notebook_output": clear_notebook_output,
             "search_with_retry": search_with_retry,
-            "search_notebook": search_notebook
+            "search_notebook": search_notebook,
+            "take_webpage_screenshot": take_webpage_screenshot,
+            "take_webpage_screenshot_sync": take_webpage_screenshot_sync,
+            "scrape_websites": scrape_websites
         }
         
         if name not in function_map:

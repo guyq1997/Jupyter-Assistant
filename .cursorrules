@@ -1,0 +1,97 @@
+# Instructions
+
+During you interaction with the user, if you find anything reusable in this project (e.g. version of a library, model name), especially about a fix to a mistake you made or a correction you received, you should take note in the `Lessons` section in the `.cursorrules` file so you will not make the same mistake again. 
+
+You should also use the `.cursorrules` file as a scratchpad to organize your thoughts. Especially when you receive a new task, you should first review the content of the scratchpad, clear old different task if necessary, first explain the task, and plan the steps you need to take to complete the task. You can use todo markers to indicate the progress, e.g.
+[X] Task 1
+[ ] Task 2
+
+Also update the progress of the task in the Scratchpad when you finish a subtask.
+Especially when you finished a milestone, it will help to improve your depth of task accomplishment to use the scratchpad to reflect and plan.
+The goal is to help you maintain a big picture as well as the progress of the task. Always refer to the Scratchpad when you plan the next step.
+
+# Tools
+
+Note all the tools are in python. So in the case you need to do batch processing, you can always consult the python files and write your own script.
+
+# Lessons
+
+## User Specified Lessons
+
+- You have a python venv in ./venv. Use it.
+- Include info useful for debugging in the program output.
+- Read the file before you try to edit it.
+- Due to Cursor's limit, when you use `git` and `gh` and need to submit a multiline commit message, first write the message in a file, and then use `git commit -F <filename>` or similar command to commit. And then remove the file. Include "[Cursor] " in the commit message and PR title.
+
+## Cursor learned
+
+- For search results, ensure proper handling of different character encodings (UTF-8) for international queries
+- Add debug information to stderr while keeping the main output clean in stdout for better pipeline integration
+- When using seaborn styles in matplotlib, use 'seaborn-v0_8' instead of 'seaborn' as the style name due to recent seaborn version changes
+- Use 'gpt-4o' as the model name for OpenAI's GPT-4 with vision capabilities
+
+# Scratchpad
+
+## Current Task: Fix UI and Type Error Issues
+
+### Analysis
+1. Cell Selection Issues:
+- Selection state not synced between CellManager and SelectionManager
+- Selected cells not visually marked in UI
+- Selection boxes not marked after selection
+
+2. Markdown Cell Issues:
+- Buttons and toolbar not hiding in non-editing mode
+- Missing editing state toggle
+
+3. Type Error in saveNotebook:
+- ui.pendingChanges undefined in NotebookManager
+- Missing DiffUIManager functionality
+
+4. SimpleMDE Initialization Error:
+- Error creating markdown cells due to DOM timing issues
+- SimpleMDE trying to access textarea before it's in DOM
+
+### Plan
+1. [X] Fix Cell Selection
+   - [X] Consolidate selection state into SelectionManager
+   - [X] Update CellManager to use SelectionManager's state
+   - [X] Fix visual selection indicators
+
+2. [X] Fix Markdown Cell Display
+   - [X] Add proper editing state toggle
+   - [X] Ensure CSS classes are applied correctly
+   - [X] Fix toolbar visibility
+
+3. [X] Fix Type Error
+   - [X] Add DiffUIManager to NotebookManager
+   - [X] Ensure proper UI inheritance chain
+   - [X] Fix pendingChanges access
+
+4. [X] Fix SimpleMDE Initialization
+   - [X] Add textarea to container before creating SimpleMDE
+   - [X] Remove textarea after SimpleMDE moves it
+   - [X] Properly handle editor element initialization
+
+### Progress
+All fixes have been implemented:
+1. Cell selection now uses a single source of truth in SelectionManager
+2. Markdown cells properly toggle editing state and toolbar visibility
+3. Fixed TypeError by:
+   - Using protected fields (_pendingChanges) in DiffUIManager
+   - Properly extending DiffUIManager in NotebookUI
+   - Adding proper getters and setters for pending changes
+   - Ensuring proper Array.from() conversion for Map/Set spreads
+4. Fixed SimpleMDE initialization by:
+   - Adding textarea to DOM before creating SimpleMDE
+   - Properly handling editor element initialization
+   - Cleaning up DOM after SimpleMDE moves elements
+
+Next steps:
+1. Test the changes to ensure they work as expected
+2. Monitor for any edge cases or regressions
+
+### Lessons Learned
+- When using SimpleMDE, ensure the textarea is in the DOM before initializing
+- Handle DOM element cleanup after SimpleMDE moves elements
+
