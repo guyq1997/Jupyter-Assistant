@@ -30,68 +30,43 @@ Note all the tools are in python. So in the case you need to do batch processing
 - When using seaborn styles in matplotlib, use 'seaborn-v0_8' instead of 'seaborn' as the style name due to recent seaborn version changes
 - Use 'gpt-4o' as the model name for OpenAI's GPT-4 with vision capabilities
 
+
 # Scratchpad
 
-## Current Task: Fix UI and Type Error Issues
+## Current Task: Implement Local File Real-time Sync
 
-### Analysis
-1. Cell Selection Issues:
-- Selection state not synced between CellManager and SelectionManager
-- Selected cells not visually marked in UI
-- Selection boxes not marked after selection
+Plan:
+[X] 1. Add File System Watcher
+    - Add watchdog for directory monitoring ✓
+    - Handle file change events ✓
+    - Implement debounce for rapid changes ✓
 
-2. Markdown Cell Issues:
-- Buttons and toolbar not hiding in non-editing mode
-- Missing editing state toggle
+[X] 2. Add File Sync API
+    - Add endpoint for setting watch directory ✓
+    - Add endpoint for getting file content ✓
+    - Add WebSocket events for file changes ✓
 
-3. Type Error in saveNotebook:
-- ui.pendingChanges undefined in NotebookManager
-- Missing DiffUIManager functionality
+[X] 3. Update Connection Manager
+    - Add file watching capability ✓
+    - Add file change broadcasting ✓
+    - Handle multiple file watchers ✓
 
-4. SimpleMDE Initialization Error:
-- Error creating markdown cells due to DOM timing issues
-- SimpleMDE trying to access textarea before it's in DOM
+[ ] 4. Frontend Integration
+    - Add save to watch directory option
+    - Handle file change notifications
+    - Update UI on file changes
 
-### Plan
-1. [X] Fix Cell Selection
-   - [X] Consolidate selection state into SelectionManager
-   - [X] Update CellManager to use SelectionManager's state
-   - [X] Fix visual selection indicators
+[ ] 5. Testing and Debugging
+    - Test file watching with multiple clients
+    - Test concurrent file modifications
+    - Add error handling for file access issues
+    - Add logging for file operations
 
-2. [X] Fix Markdown Cell Display
-   - [X] Add proper editing state toggle
-   - [X] Ensure CSS classes are applied correctly
-   - [X] Fix toolbar visibility
+Current Step: Testing the file watching functionality
 
-3. [X] Fix Type Error
-   - [X] Add DiffUIManager to NotebookManager
-   - [X] Ensure proper UI inheritance chain
-   - [X] Fix pendingChanges access
-
-4. [X] Fix SimpleMDE Initialization
-   - [X] Add textarea to container before creating SimpleMDE
-   - [X] Remove textarea after SimpleMDE moves it
-   - [X] Properly handle editor element initialization
-
-### Progress
-All fixes have been implemented:
-1. Cell selection now uses a single source of truth in SelectionManager
-2. Markdown cells properly toggle editing state and toolbar visibility
-3. Fixed TypeError by:
-   - Using protected fields (_pendingChanges) in DiffUIManager
-   - Properly extending DiffUIManager in NotebookUI
-   - Adding proper getters and setters for pending changes
-   - Ensuring proper Array.from() conversion for Map/Set spreads
-4. Fixed SimpleMDE initialization by:
-   - Adding textarea to DOM before creating SimpleMDE
-   - Properly handling editor element initialization
-   - Cleaning up DOM after SimpleMDE moves elements
-
-Next steps:
-1. Test the changes to ensure they work as expected
-2. Monitor for any edge cases or regressions
-
-### Lessons Learned
-- When using SimpleMDE, ensure the textarea is in the DOM before initializing
-- Handle DOM element cleanup after SimpleMDE moves elements
+Next Actions:
+1. Test file watching with multiple clients
+2. Add error handling for file access issues
+3. Add logging for file operations
+4. Test concurrent file modifications
 

@@ -21,6 +21,10 @@ from search_notebook import (
 from search_engine import search_with_retry
 from screenshot_utils import take_screenshot, take_screenshot_sync
 from web_scraper import process_urls, validate_url
+from state import get_manager  # Replace web_server import with state import
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class NotebookEditResult:
@@ -35,83 +39,76 @@ class NotebookEditResult:
         else:
             return f"Error: {self.message}"
 
-def load_notebook(notebook_path: str) -> nbformat.NotebookNode:
-    """Load a notebook from file or create a new one if it doesn't exist."""
-    try:
-        with open(notebook_path, 'r', encoding='utf-8') as f:
-            return nbformat.read(f, as_version=4)
-    except FileNotFoundError:
-        return new_notebook()
+def get_notebook() -> Dict[str, Any]:
+    """Get direct reference to the notebook content in memory."""
+    manager = get_manager()
+    logger.info(f"Got manager: {manager}")
+    if manager is None:
+        logger.error("Manager is None!")
+        raise RuntimeError("Manager not initialized")
+    content = manager.get_notebook_content()
+    logger.info(f"Got notebook content: {bool(content)}")
+    return content  # Use the manager's getter method
 
-def get_ten_cells(notebook_path: str, cell_indices: List[int]) -> str:
-    """Get the content of ten cells in the notebook in a well-structured format.
-    Returns a string with each cell's content prefixed by its index and type.
-    """
-    notebook = load_notebook(notebook_path)
-    formatted_cells = []
-    
-    for idx, cell in enumerate(notebook.cells):
-        #cell_header = f"\n[Cell {idx} - {cell.cell_type}]"
-        cell_content = cell.source.strip()
-        if cell_content:
-            formatted_cells.append(f"<{cell.cell_type}>\n{cell_content}\n</{cell.cell_type}>")
-        else:
-            formatted_cells.append(f"<empty cell>")
+def get_multiple_cells(cell_indices: List[int]) -> str:
+    """Get the content of multiple cells in the notebook in a well-structured format."""
+    try:
+        notebook = get_notebook()
+        
+        if not notebook or "cells" not in notebook:
+            return "No notebook loaded in memory"
             
-    return "\n".join(formatted_cells)
+        formatted_cells = []
+        
+        for idx in cell_indices:
+            if 0 <= idx < len(notebook["cells"]):
+                cell = notebook["cells"][idx]
+                cell_content = cell["source"].strip()
+                if cell_content:
+                    formatted_cells.append(f"<{cell['cell_type']}>\n{cell_content}\n</{cell['cell_type']}>")
+                else:
+                    formatted_cells.append(f"<empty cell>")
+            else:
+                formatted_cells.append(f"[Cell {idx} - out of range]")
+                
+        return "\n".join(formatted_cells)
+        
+    except Exception as e:
+        return f"Error getting cells: {str(e)}"
 
 def save_notebook(notebook: nbformat.NotebookNode, notebook_path: str) -> None:
     """Save the notebook to file."""
     with open(notebook_path, 'w', encoding='utf-8') as f:
         nbformat.write(notebook, f)
 
-def clear_notebook_output(notebook_path: str) -> None:
-    """Clear all output of the Jupyter Notebook to make it clean."""
-    notebook = load_notebook(notebook_path)
-    for cell in notebook.cells:
-        if cell.cell_type == 'code':
-            cell.outputs = []
-            cell.execution_count = None
-    save_notebook(notebook, notebook_path)
-
-async def propose_notebook_change(notebook_path: str, changes: List[Dict[str, Any]]) -> None:
-    """Send proposed changes to the client through WebSocket."""
-    from web_server import manager
-    
-    try:
-        data = {
-            "type": "propose_changes",
-            "changes": changes,
-            "notebook_path": notebook_path
-        }
-        await manager.broadcast(data)
-        return NotebookEditResult(
-            success=True,
-            message="Changes proposed successfully. User will decide if they want to apply them."
-        )
-    except Exception as e:
-        return NotebookEditResult(
-            success=False,
-            message=f"Failed to propose changes: {str(e)}"
-        )
-
 async def update_cell(
-    notebook_path: Annotated[str, "Path to the notebook file"],
     cell_index: Annotated[int, "Index of the cell to update"],
     content: Annotated[str, "New content for the cell"],
     cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
 ) -> str:
     """Propose an update to a cell's content at the specified index."""
     try:
-        notebook = load_notebook(notebook_path)
+        notebook = get_notebook()
+        manager = get_manager()
+        if manager is None:
+            return str(NotebookEditResult(
+                success=False,
+                message="Manager not initialized"
+            ))
         
-        if cell_index >= len(notebook.cells):
+        if not notebook or "cells" not in notebook:
+            return str(NotebookEditResult(
+                success=False,
+                message="No notebook loaded in memory"
+            ))
+        
+        if cell_index >= len(notebook["cells"]):
             return str(NotebookEditResult(
                 success=False,
                 message=f"Cell index {cell_index} out of range"
             ))
         
-        old_content = notebook.cells[cell_index].source
+        old_content = notebook["cells"][cell_index]["source"]
         
         changes = [{
             "type": "update",
@@ -121,8 +118,16 @@ async def update_cell(
             "cell_type": cell_type
         }]
         
-        result = await propose_notebook_change(notebook_path, changes)
-        return str(result)
+        data = {
+            "type": "propose_changes",
+            "changes": changes
+        }
+        await manager.broadcast(data)
+        
+        return str(NotebookEditResult(
+            success=True,
+            message="Changes proposed successfully"
+        ))
         
     except Exception as e:
         return str(NotebookEditResult(
@@ -131,14 +136,25 @@ async def update_cell(
         ))
 
 async def insert_cell_below(
-    notebook_path: Annotated[str, "Path to the notebook file"],
     index: Annotated[int, "Index where to insert the cell"],
     content: Annotated[str, "Content for the new cell"],
     cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
 ) -> str:
     """Propose inserting a new cell below the specified index."""
     try:
-        notebook = load_notebook(notebook_path)
+        notebook = get_notebook()
+        manager = get_manager()
+        if manager is None:
+            return str(NotebookEditResult(
+                success=False,
+                message="Manager not initialized"
+            ))
+        
+        if not notebook or "cells" not in notebook:
+            return str(NotebookEditResult(
+                success=False,
+                message="No notebook loaded in memory"
+            ))
         
         changes = [{
             "type": "add",
@@ -148,8 +164,16 @@ async def insert_cell_below(
             "cell_type": cell_type
         }]
         
-        result = await propose_notebook_change(notebook_path, changes)
-        return str(result)
+        data = {
+            "type": "propose_changes",
+            "changes": changes
+        }
+        await manager.broadcast(data)
+        
+        return str(NotebookEditResult(
+            success=True,
+            message="Changes proposed successfully"
+        ))
         
     except Exception as e:
         return str(NotebookEditResult(
@@ -158,14 +182,25 @@ async def insert_cell_below(
         ))
 
 async def insert_cell_above(
-    notebook_path: Annotated[str, "Path to the notebook file"],
     index: Annotated[int, "Index where to insert the cell"],
     content: Annotated[str, "Content for the new cell"],
     cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
 ) -> str:
     """Propose inserting a new cell above the specified index."""
     try:
-        notebook = load_notebook(notebook_path)
+        notebook = get_notebook()
+        manager = get_manager()
+        if manager is None:
+            return str(NotebookEditResult(
+                success=False,
+                message="Manager not initialized"
+            ))
+        
+        if not notebook or "cells" not in notebook:
+            return str(NotebookEditResult(
+                success=False,
+                message="No notebook loaded in memory"
+            ))
         
         changes = [{
             "type": "add",
@@ -175,8 +210,16 @@ async def insert_cell_above(
             "cell_type": cell_type
         }]
         
-        result = await propose_notebook_change(notebook_path, changes)
-        return str(result)
+        data = {
+            "type": "propose_changes",
+            "changes": changes
+        }
+        await manager.broadcast(data)
+        
+        return str(NotebookEditResult(
+            success=True,
+            message="Changes proposed successfully"
+        ))
         
     except Exception as e:
         return str(NotebookEditResult(
@@ -185,16 +228,27 @@ async def insert_cell_above(
         ))
 
 async def delete_cell(
-    notebook_path: Annotated[str, "Path to the notebook file"],
     index: Annotated[int, "Index of the cell to delete"]
 ) -> str:
     """Propose deleting a cell at the specified index."""
     try:
-        notebook = load_notebook(notebook_path)
+        notebook = get_notebook()
+        manager = get_manager()
+        if manager is None:
+            return str(NotebookEditResult(
+                success=False,
+                message="Manager not initialized"
+            ))
         
-        if 0 <= index < len(notebook.cells):
-            old_content = notebook.cells[index].source
-            cell_type = notebook.cells[index].cell_type
+        if not notebook or "cells" not in notebook:
+            return str(NotebookEditResult(
+                success=False,
+                message="No notebook loaded in memory"
+            ))
+        
+        if 0 <= index < len(notebook["cells"]):
+            old_content = notebook["cells"][index]["source"]
+            cell_type = notebook["cells"][index]["cell_type"]
             
             changes = [{
                 "type": "delete",
@@ -204,8 +258,16 @@ async def delete_cell(
                 "cell_type": cell_type
             }]
             
-            result = await propose_notebook_change(notebook_path, changes)
-            return str(result)
+            data = {
+                "type": "propose_changes",
+                "changes": changes
+            }
+            await manager.broadcast(data)
+            
+            return str(NotebookEditResult(
+                success=True,
+                message="Changes proposed successfully"
+            ))
         else:
             return str(NotebookEditResult(
                 success=False,
@@ -219,14 +281,20 @@ async def delete_cell(
         ))
 
 async def get_cell_content(
-    notebook_path: Annotated[str, "Path to the notebook file"],
     index: Annotated[int, "Index of the cell to retrieve"]
 ) -> str:
-    """search the content of a cell at the specified index."""
+    """Get the content of a cell at the specified index."""
     try:
-        notebook = load_notebook(notebook_path)
-        if 0 <= index < len(notebook.cells):
-            content = notebook.cells[index].source
+        notebook = get_notebook()
+        
+        if not notebook or "cells" not in notebook:
+            return str(NotebookEditResult(
+                success=False,
+                message="No notebook loaded in memory"
+            ))
+        
+        if 0 <= index < len(notebook["cells"]):
+            content = notebook["cells"][index]["source"]
             result = NotebookEditResult(
                 success=True,
                 message=f"Successfully retrieved cell content",
@@ -250,7 +318,6 @@ def get_weather(location):
 
 
 async def search_notebook(
-    notebook_path: Annotated[str, "Path to the notebook file"],
     query: Annotated[str, "Search query text"],
     keywords: Annotated[Optional[List[str]], "List of keywords for keyword search"],
     top_k: Annotated[int, "Maximum number of results to return"] = 10,
@@ -259,15 +326,25 @@ async def search_notebook(
 ) -> str:
     """Search within a Jupyter notebook using semantic search or keyword matching. Return matching cells with their content."""
     try:
+        manager = get_manager()
+        if manager is None:
+            return "Error: Manager not initialized"
+            
+        notebook = get_notebook()
+        if not notebook:
+            return "Error: No notebook loaded in memory"
+            
         search_engine = get_search_engine()
-        search_engine.index_notebook(notebook_path)
+        if not isinstance(search_engine, NotebookSearchEngine):
+            search_engine = NotebookSearchEngine(manager)
+            
+        # 直接传入 notebook dict
+        search_engine.index_notebook(notebook)
         
         results_semantic = search_engine.search(query, top_k, min_score)
-        
         results_keywords = search_engine.keyword_search(keywords, match_all)
         
-
-        return await format_search_results(results_semantic + results_keywords )
+        return await format_search_results(results_semantic + results_keywords)
         
     except Exception as e:
         return f"Error searching notebook: {str(e)}"
@@ -326,16 +403,15 @@ tools = [{
     "type": "function",
     "function": {
         "name": "update_cell",
-        "description": "Update a cell's content at the specified index in a Jupyter notebook.",
+        "description": "Update a cell's content at the specified index in the notebook.",
         "parameters": {
             "type": "object",
             "properties": {
-                "notebook_path": {"type": "string", "description": "Path to the notebook file"},
                 "cell_index": {"type": "integer", "description": "Index of the cell to update"},
                 "content": {"type": "string", "description": "New content for the cell"},
                 "cell_type": {"type": "string", "enum": ["markdown", "code"], "description": "Type of cell ('markdown' or 'code')"}
             },
-            "required": ["notebook_path", "cell_index", "content", "cell_type"],
+            "required": ["cell_index", "content", "cell_type"],
             "additionalProperties": False
         },
         "strict": True
@@ -344,16 +420,15 @@ tools = [{
     "type": "function",
     "function": {
         "name": "insert_cell_below",
-        "description": "Insert a new cell below the specified index in a Jupyter notebook.",
+        "description": "Insert a new cell below the specified index in the notebook.",
         "parameters": {
             "type": "object",
             "properties": {
-                "notebook_path": {"type": "string", "description": "Path to the notebook file"},
                 "index": {"type": "integer", "description": "Index where to insert a new cell below"},
                 "content": {"type": "string", "description": "Content for the new cell"},
                 "cell_type": {"type": "string", "enum": ["markdown", "code"], "description": "Type of cell ('markdown' or 'code')"}
             },
-            "required": ["notebook_path", "index", "content", "cell_type"],
+            "required": ["index", "content", "cell_type"],
             "additionalProperties": False
         },
         "strict": True
@@ -362,16 +437,15 @@ tools = [{
     "type": "function",
     "function": {
         "name": "insert_cell_above",
-        "description": "Insert a new cell above the specified index in a Jupyter notebook.",
+        "description": "Insert a new cell above the specified index in the notebook.",
         "parameters": {
             "type": "object",
             "properties": {
-                "notebook_path": {"type": "string", "description": "Path to the notebook file"},
                 "index": {"type": "integer", "description": "Index where to insert a new cell above"},
                 "content": {"type": "string", "description": "Content for the new cell"},
                 "cell_type": {"type": "string", "enum": ["markdown", "code"], "description": "Type of cell ('markdown' or 'code')"}
             },
-            "required": ["notebook_path", "index", "content", "cell_type"],
+            "required": ["index", "content", "cell_type"],
             "additionalProperties": False
         },
         "strict": True
@@ -380,14 +454,13 @@ tools = [{
     "type": "function",
     "function": {
         "name": "delete_cell",
-        "description": "Delete a cell at the specified index in a Jupyter notebook.",
+        "description": "Delete a cell at the specified index in the notebook.",
         "parameters": {
             "type": "object",
             "properties": {
-                "notebook_path": {"type": "string", "description": "Path to the notebook file"},
                 "index": {"type": "integer", "description": "Index of the cell to delete"}
             },
-            "required": ["notebook_path", "index"],
+            "required": ["index"],
             "additionalProperties": False
         },
         "strict": True
@@ -396,14 +469,13 @@ tools = [{
     "type": "function",
     "function": {
         "name": "get_cell_content",
-        "description": "Get the content of a cell at the specified index in a Jupyter notebook.",
+        "description": "Get the content of a cell at the specified index in the notebook.",
         "parameters": {
             "type": "object",
             "properties": {
-                "notebook_path": {"type": "string", "description": "Path to the notebook file"},
                 "index": {"type": "integer", "description": "Index of the cell to retrieve"}
             },
-            "required": ["notebook_path", "index"],
+            "required": ["index"],
             "additionalProperties": False
         },
         "strict": True
@@ -411,31 +483,14 @@ tools = [{
 }, {
     "type": "function", 
     "function": {
-        "name": "get_ten_cells",
-        "description": "Get the content of ten cells in the notebook in a well-structured format.",
+        "name": "get_multiple_cells",
+        "description": "Get the content of multiple cells in the notebook in a well-structured format.",
         "parameters": {
             "type": "object",
             "properties": {
-                "notebook_path": {"type": "string", "description": "Path to the notebook file"},
                 "cell_indices": {"type": "array", "items": {"type": "integer"}, "description": "List of cell indices to retrieve"}
             },
-            "required": ["notebook_path", "cell_indices"],
-            "additionalProperties": False
-        },
-        "strict": True
-    }
-}, 
-   {
-    "type": "function",
-    "function": {
-        "name": "clear_notebook_output",
-        "description": "Clear all output cells in a Jupyter notebook.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "notebook_path": {"type": "string", "description": "Path to the notebook file"}
-            },
-            "required": ["notebook_path"],
+            "required": ["cell_indices"],
             "additionalProperties": False
         },
         "strict": True
@@ -474,10 +529,6 @@ tools = [{
         "parameters": {
             "type": "object",
             "properties": {
-                "notebook_path": {
-                    "type": "string",
-                    "description": "Path to the notebook file"
-                },
                 "query": {
                     "type": "string",
                     "description": "Query text used semantic search"
@@ -489,7 +540,6 @@ tools = [{
                 }
             },
             "required": [
-                "notebook_path",
                 "query",
                 "keywords"
             ],
@@ -606,9 +656,8 @@ async def call_function(name, args):
             "insert_cell_below": insert_cell_below,
             "insert_cell_above": insert_cell_above,
             "delete_cell": delete_cell,
+            "get_multiple_cells": get_multiple_cells,
             "get_cell_content": get_cell_content,
-            "get_ten_cells": get_ten_cells,
-            "clear_notebook_output": clear_notebook_output,
             "search_with_retry": search_with_retry,
             "search_notebook": search_notebook,
             "take_webpage_screenshot": take_webpage_screenshot,

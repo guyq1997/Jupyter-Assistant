@@ -1,0 +1,200 @@
+.notebook-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #fff;
+  position: relative;
+  overflow-y: auto;
+}
+
+.notebook-toolbar {
+  padding: 8px 16px;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* Add styles for the save button */
+.save-button {
+  order: -1; /* Move to the start/left */
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+/* Style for when there are no changes */
+.save-button:disabled {
+  background-color: #e9ecef;
+  color: #6c757d;
+  cursor: not-allowed;
+  border-color: transparent;
+}
+
+/* Style for when there are changes */
+.save-button:not(:disabled) {
+  background-color: #ff9800; /* Orange color for unsaved changes */
+  color: white;
+  cursor: pointer;
+  border-color: #f57c00;
+}
+
+.save-button:not(:disabled):hover {
+  background-color: #f57c00;
+  border-color: #ef6c00;
+}
+
+/* Style for other toolbar buttons */
+.toolbar-button {
+  padding: 6px 12px;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  color: #495057;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toolbar-button:hover {
+  background-color: #e9ecef;
+  border-color: #ced4da;
+}
+
+.notebook-cells {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* Drag and drop styles */
+.notebook-panel.drag-over {
+  background-color: #f8f9fa;
+}
+
+.notebook-panel.drag-over::after {
+  content: 'Drop Jupyter Notebook file here';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 20px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 2px dashed #adb5bd;
+  border-radius: 8px;
+  font-size: 18px;
+  color: #495057;
+}
+
+/* 滚动条样式 */
+.notebook-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.notebook-panel::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.notebook-panel::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.notebook-panel::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Add some spacing between cells */
+.notebook-cells > div:not(:last-child) {
+  margin-bottom: 20px;
+}
+
+.confirmation-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.confirmation-content {
+  background-color: white;
+  padding: 24px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.confirmation-content h3 {
+  margin: 0 0 16px 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.changes-preview {
+  margin-bottom: 20px;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.change-item {
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.change-item:last-child {
+  border-bottom: none;
+}
+
+.confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.confirm-button, .reject-button {
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s;
+}
+
+.confirm-button {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.confirm-button:hover {
+  background-color: #45a049;
+}
+
+.reject-button {
+  background-color: #f44336;
+  color: white;
+}
+
+.reject-button:hover {
+  background-color: #da190b;
+}
+
