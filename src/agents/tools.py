@@ -7,11 +7,8 @@ import asyncio
 from search_notebook import (
     get_search_engine,
     format_search_results,
-    NotebookCell,
-    SearchResult,
     NotebookSearchEngine
 )
-from search_engine import search_with_retry
 from screenshot_utils import take_screenshot, take_screenshot_sync
 from web_scraper import process_urls, validate_url
 from state import get_manager  # Replace web_server import with state import
@@ -25,6 +22,8 @@ from langdetect import detect
 import re
 import nltk  # Import nltk here for downloading resources
 import spacy
+from duckduckgo_search import DDGS
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +266,6 @@ def get_weather(location):
     return "Failed to get weather"
 
 
-
 async def search_notebook(
     query: Annotated[str, "Search query text"],
     keywords: Annotated[Optional[List[str]], "List of keywords for keyword search"],
@@ -277,6 +275,9 @@ async def search_notebook(
 ) -> str:
     """Search within a Jupyter notebook using semantic search or keyword matching. Return matching cells with their content."""
     try:
+        # 延迟导入
+        from search_notebook import get_search_engine, format_search_results, NotebookSearchEngine
+        
         manager = get_manager()
         if manager is None:
             return "Error: Manager not initialized"
@@ -349,7 +350,34 @@ def take_webpage_screenshot_sync(
         return f"Screenshot saved successfully to: {result}"
     except Exception as e:
         return f"Error taking screenshot: {str(e)}"
+    
+def search_with_retry(query, max_results=10, max_retries=3):
+    """
+    Search using DuckDuckGo and return results with URLs and text snippets.
+    """
+    for attempt in range(max_retries):
 
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=max_results))
+                
+            if not results:
+                return "No results found"
+            
+            # Format results into a readable string
+            formatted_results = []
+            for i, r in enumerate(results, 1):
+                formatted_results.append(f"\n=== Result {i} ===")
+                formatted_results.append(f"URL: {r.get('href', 'N/A')}")
+                formatted_results.append(f"Title: {r.get('title', 'N/A')}")
+                formatted_results.append(f"Snippet: {r.get('body', 'N/A')}")
+            
+            return "\n".join(formatted_results)
+                
+        except Exception as e:
+            if attempt == max_retries - 1:  # If last attempt
+                return f"Search failed after {max_retries} attempts: {str(e)}"
+            time.sleep(1)  # Wait 1 second before retry
 tools = [{
     "type": "function",
     "function": {

@@ -20,6 +20,7 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const [proposedChanges, setProposedChanges] = useState<any[]>([]);
+  const [metadata, setMetadata] = useState(null);
 
   // Update cells when notebook changes
   useEffect(() => {
@@ -137,8 +138,6 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
       return change;
     }));
     
-    // Auto-save after deletion
-    await handleSave();
   };
 
   const handleFileOpen = async () => {
@@ -162,6 +161,7 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
       
       // Keep all original notebook content when opening
       const notebook = JSON.parse(text) as any;
+      console.log(notebook)
       if (!notebook.cells) {
         console.error('Invalid notebook format - no cells array found');
         throw new Error('Invalid notebook format');
@@ -200,8 +200,10 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
       });
       
       setCells(notebookWithIds);
+      setMetadata(notebook.metadata)
       setCurrentFile(fileHandle);
       setIsDirty(false);
+      
       
       console.log('File loading complete. Cells state updated:', notebookWithIds);
     } catch (error) {
@@ -214,35 +216,33 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
 
   const handleSave = async () => {
     try {
-      // Keep full content for file saving
-      const notebook: INotebook = {
-        cells: cells.map(({ id, cell_type, source, outputs }) => ({
+      // Create a new notebook object to avoid modifying the original
+      const notebookToSave: INotebook = {
+        cells: cells.map(({ id, cell_type, source, outputs,metadata }) => ({
           id,
           cell_type,
           source,
-          outputs
+          outputs,
+          metadata
         })),
-        metadata: {
-          kernelspec: {
-            name: 'python3',
-            display_name: 'Python 3',
-            language: 'python'
-          }
-        }
+        metadata: { metadata}, // Preserve existing metadata,
+        nbformat: 4, // Set nbformat to 4
+        nbformat_minor: 4 // Set nbformat_minor to 4
       };
 
+      // Save the notebook content
+      const notebookContent = JSON.stringify(notebookToSave, null, 2);
+      console.log('Saving notebook:', notebookContent);
       if (currentFile) {
-        const notebookContent = JSON.stringify(notebook, null, 2);
-        
-        // Save full content to file
         const writable = await currentFile.createWritable();
         await writable.write(notebookContent);
         await writable.close();
+        console.log('Notebook saved successfully.');
 
         // Send simplified version for syncing
         const simplifiedNotebook = {
-          ...notebook,
-          cells: notebook.cells.map(cell => ({
+          ...notebookToSave,
+          cells: notebookToSave.cells.map(cell => ({
             id: cell.id,
             cell_type: cell.cell_type,
             source: cell.source
@@ -271,7 +271,7 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
           ],
         });
         const writable = await handle.createWritable();
-        await writable.write(JSON.stringify(notebook, null, 2));
+        await writable.write(notebookContent);
         await writable.close();
         setCurrentFile(handle);
         
@@ -346,20 +346,6 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
       });
     };
 
-    const handleContentChange = async (newContent: string) => {
-      try {
-        if (!currentFile) return;
-        
-        // Update the original file
-        const writable = await currentFile.createWritable();
-        await writable.write(newContent);
-        await writable.close();
-        
-      } catch (error) {
-        console.error('Error updating file:', error);
-      }
-    };
-
     const handleAcceptChange = async (changeId: string) => {
       // Get all changes up to and including the current change
       const allChanges = proposedChanges.filter(change => change.status === 'pending');
@@ -369,6 +355,10 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
       // Apply changes in sequence
       const updatedCells = [...cells];
       
+      console.log('Current Cells State:', updatedCells);
+      console.log('All Pending Changes:', allChanges);
+      console.log('Changes to Apply:', changesToApply);
+
       changesToApply.forEach(change => {
         const targetIndex = change.index;
         
@@ -381,6 +371,7 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
               : [change.new_content],
             cell_type: change.cell_type
           };
+          console.log(`Applied Change at Index ${targetIndex}:`, updatedCells[targetIndex]);
         }
       });
       
@@ -404,8 +395,6 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
         timestamp: new Date().toISOString()
       });
 
-      // Auto-save after accepting the change
-      await handleSave();
     };
 
     const handleRejectChange = (changeId: string) => {
@@ -444,9 +433,14 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
         ...cells.slice(newIndex)
       ];
       
+      // Update cells first
       setCells(updatedCells);
       setIsDirty(true);
+      console.log(cells);
       
+      // Ensure setCells is completed before running handleSave
+      await new Promise(resolve => setTimeout(resolve, 0)); // Wait for state update
+      console.log(cells);
       // Update indices of pending changes
       setProposedChanges(prev => prev.map(change => {
         if (change.status !== 'pending') return change;
@@ -457,9 +451,7 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
         }
         return change;
       }));
-      
-      // Auto-save after adding new cell
-      await handleSave();
+
     };
 
     return (
@@ -527,6 +519,7 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
                 onSelect={() => toggleCellSelection(cell.id)}
                 onAddAbove={() => addCell(index, 'above')}
                 onAddBelow={() => addCell(index, 'below')}
+                onRemove={() => deleteCell(cell.id)}
               />
             );
           })}

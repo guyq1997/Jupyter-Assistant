@@ -25,4 +25,6 @@ export interface INotebook {
   cells: ICell[];
   metadata?: any;
   path?: string;
+  nbformat?: number;
+  nbformat_minor?: number;
 } 

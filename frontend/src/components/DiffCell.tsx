@@ -21,6 +21,8 @@ const DiffCell: React.FC<DiffCellProps> = ({
     if (oldCell && newCell) {
       const oldLines = oldCell.source;
       const newLines = newCell.source;
+      console.log('Old Lines:', oldLines);
+      console.log('New Lines:', newLines);
       const maxLines = Math.max(oldLines.length, newLines.length);
       
       return (
