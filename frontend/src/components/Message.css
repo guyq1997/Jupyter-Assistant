@@ -1,0 +1,49 @@
+.message {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 8px;
+  max-width: 85%;
+}
+
+.message.user {
+  margin-left: auto;
+  background-color: #0366d6;
+  color: white;
+}
+
+.message.assistant {
+  margin-right: auto;
+  background-color: #f6f8fa;
+  border: 1px solid #e1e4e8;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.message.user .message-header {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message.assistant .message-header {
+  color: #586069;
+}
+
+.message-role {
+  font-weight: 600;
+}
+
+.message-time {
+  opacity: 0.8;
+}
+
+.message-content {
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+} 

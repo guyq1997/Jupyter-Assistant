@@ -8,7 +8,10 @@ from pathlib import Path
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from datetime import datetime
-from functools import lru_cache
+import logging 
+from state import get_manager
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class NotebookCell:
@@ -36,54 +39,53 @@ class NotebookSearchEngine:
     German to find content in English).
     """
     
-    def __init__(self, embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2", batch_size: int = 32):
+    def __init__(self, connection_manager, embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"):
         """Initialize the search engine.
         
         Args:
             embedding_model: Name of the sentence-transformers model to use. Default is
                            paraphrase-multilingual-MiniLM-L12-v2 which provides powerful 
                            multilingual embeddings supporting 50+ languages.
-            batch_size: Number of cells to process at once during embedding.
+            connection_manager: Instance of ConnectionManager for temporary file handling
         """
         self.model = SentenceTransformer(embedding_model)
         self.notebook_cells: List[NotebookCell] = []
         self.cell_embeddings: List[np.ndarray] = []
-        self.current_notebook: Optional[str] = None
-        self.batch_size = batch_size
+        self.manager = connection_manager
 
-    def _create_cell(self, cell: nbformat.NotebookNode) -> NotebookCell:
-        """Create a NotebookCell instance from a nbformat cell."""
+    def _create_cell(self, cell: Dict[str, Any]) -> NotebookCell:
+        """Create a NotebookCell instance from a notebook cell dict."""
         return NotebookCell(
-            cell_type=cell.cell_type,
-            content=cell.source,
-            metadata=cell.metadata,
-            execution_count=getattr(cell, 'execution_count', None),
-            outputs=getattr(cell, 'outputs', [])
+            cell_type=cell.get("cell_type", "code"),
+            content="".join(cell.get("source", [])) if isinstance(cell.get("source"), list) else str(cell.get("source", "")),
+            metadata=cell.get("metadata", {}),
+            execution_count=cell.get("execution_count"),
+            outputs=cell.get("outputs", [])
         )
     
-    @lru_cache(maxsize=32)
-    def load_notebook(self, notebook_path: str) -> Tuple[NotebookCell, ...]:
-        """Parse a notebook file and return its cells. Results are cached."""
-        with open(notebook_path, 'r', encoding='utf-8') as f:
-            nb = nbformat.read(f, as_version=4)
-        return tuple(self._create_cell(cell) for cell in nb.cells)
-    
-    def index_notebook(self, notebook_path: str) -> None:
-        """Index a notebook for searching using batched processing."""
-        if self.current_notebook == notebook_path and self.cell_embeddings:
-            return  # Skip if already indexed
+    def index_notebook(self, notebook: Optional[Dict[str, Any]] = None) -> None:
+        """Index a notebook for searching using batched processing.
+        
+        Args:
+            notebook: Optional notebook dict. If not provided, will get from manager.
+        """
+        if notebook is None:
+            notebook = self.manager.get_notebook_content()
+            if not notebook:
+                logger.error("No notebook content available in manager")
+                return
+        
+        if not isinstance(notebook, dict) or "cells" not in notebook:
+            logger.error("Invalid notebook format")
+            return
             
-        self.current_notebook = notebook_path
-        self.notebook_cells = list(self.load_notebook(notebook_path))
+        # Convert cells to NotebookCell objects
+        self.notebook_cells = [self._create_cell(cell) for cell in notebook["cells"]]
         
-        # Process embeddings in batches
+        # Get all cell contents at once
         contents = [cell.content for cell in self.notebook_cells]
-        self.cell_embeddings = []
-        
-        for i in range(0, len(contents), self.batch_size):
-            batch = contents[i:i + self.batch_size]
-            batch_embeddings = self.model.encode(batch, show_progress_bar=False)
-            self.cell_embeddings.extend(batch_embeddings)
+        # Compute embeddings in one go
+        self.cell_embeddings = self.model.encode(contents, show_progress_bar=False)
 
     def search(self, query: str, top_k: int = 5, min_score: float = 0.5) -> List[SearchResult]:
         """Perform semantic search within the current notebook.
@@ -150,7 +152,10 @@ def get_search_engine() -> NotebookSearchEngine:
     """Get or create the global search engine instance."""
     global _search_engine
     if _search_engine is None:
-        _search_engine = NotebookSearchEngine()
+        manager = get_manager()
+        if manager is None:
+            raise RuntimeError("Manager not initialized")
+        _search_engine = NotebookSearchEngine(manager)
     return _search_engine
 
 async def format_search_results(results: List[SearchResult]) -> str:

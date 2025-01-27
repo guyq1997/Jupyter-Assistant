@@ -1,0 +1,163 @@
+.diff-cell {
+  margin: 16px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.diff-cell:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.diff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.diff-type {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #495057;
+}
+
+.diff-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.diff-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.diff-action .icon {
+  font-size: 1rem;
+}
+
+.diff-action.accept {
+  background-color: #28a745;
+  color: white;
+}
+
+.diff-action.accept:hover {
+  background-color: #218838;
+}
+
+.diff-action.reject {
+  background-color: #dc3545;
+  color: white;
+}
+
+.diff-action.reject:hover {
+  background-color: #c82333;
+}
+
+.diff-content {
+  padding: 16px;
+  background-color: white;
+}
+
+.cell-type-label {
+  font-size: 0.8rem;
+  color: #6c757d;
+  margin-bottom: 8px;
+  font-family: monospace;
+}
+
+.diff-text {
+  margin: 0;
+  font-family: monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.diff-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.diff-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Add styles */
+.diff-add {
+  border-left: 4px solid #28a745;
+}
+
+.diff-add .diff-text {
+  background-color: #e6ffe8;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Delete styles */
+.diff-delete {
+  border-left: 4px solid #dc3545;
+}
+
+.diff-delete .diff-text {
+  background-color: #ffe6e6;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Update styles */
+.diff-update {
+  border-left: 4px solid #007bff;
+}
+
+.diff-text.diff-old {
+  background-color: #ffe6e6;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-decoration: line-through;
+  color: #dc3545;
+}
+
+.diff-text.diff-new {
+  background-color: #e6ffe8;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #28a745;
+}
+
+.diff-text.diff-unchanged {
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #495057;
+}
+
+/* Animation for new cells */
+@keyframes highlight {
+  0% {
+    background-color: rgba(40, 167, 69, 0.2);
+  }
+  50% {
+    background-color: rgba(40, 167, 69, 0.1);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.diff-add {
+  animation: highlight 2s ease-out;
+} 

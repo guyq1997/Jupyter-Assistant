@@ -2,13 +2,14 @@ from prompt import SYSTEM_MESSAGE_PLANNER, SYSTEM_MESSAGE_EDITOR, GENERATE_RUBRI
 from tools import tools, call_function
 import asyncio
 import nbformat
-from web_server import app, start_server, broadcast_message, broadcast_notebook_update, get_user_input, manager
+from web_server import app, start_server, broadcast_message, get_user_input, manager
 import uvicorn
 from openai import OpenAI
 import os
 import datetime
 import json
 from typing import List, Dict, Any
+from fastapi.middleware.cors import CORSMiddleware
 
 client = OpenAI()
 
@@ -22,7 +23,6 @@ class Agent:
         return "Message history cleared."
 
     async def process_query(self, query: str) -> str:
-
         # Handle special commands
         if query.get("message", "").strip().lower() == "clear_history":
             result = self.clear_history()
@@ -31,10 +31,10 @@ class Agent:
 
         if not hasattr(self, 'message_history'):
             self.message_history = []
-
-        selected_cells_content = query.get("selected_cells", "") + f"\n\n<path_to_notebook>{os.environ['CURRENT_NOTEBOOK_PATH']}</path_to_notebook>"
+        selected_cells_content = query.get("selected_cells", "")
         query = query.get("message", "")
-
+        print(query)
+        print(selected_cells_content)
         if len(self.message_history) > 0:
             messages = self.message_history.copy()
             messages.append({"role": "user", "content": selected_cells_content})
@@ -239,51 +239,66 @@ class Agent:
         
         return
 
-# Function to update notebook display
-async def update_notebook_display(notebook_path: str):
-    try:
-        # Read the notebook
-        with open(notebook_path, 'r', encoding='utf-8') as f:
-            nb = nbformat.read(f, as_version=4)
-        
-        # Convert cells to a format suitable for display
-        cells = []
-        for cell in nb.cells:
-            cells.append({
-                'cell_type': cell.cell_type,
-                'source': cell.source,
-                'metadata': cell.metadata
-            })
-        
-        # Broadcast the update
-        await broadcast_notebook_update(cells)
-    except Exception as e:
-        print(f"Error updating notebook display: {e}")
-        await broadcast_message("System", f"Error updating notebook: {e}")
-
-
 # Run the conversation and stream to the console and web interface
 async def main():
     # Try different ports if the default one is in use
     port = 8765
     max_retries = 5
     server = None
-    agent = Agent()  # Create an instance of Agent
+    agent = Agent()
     
     for attempt in range(max_retries):
         try:
-            config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="error")
+            # Add CORS middleware if not already added
+            if not any(isinstance(m, CORSMiddleware) for m in app.user_middleware):
+                app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=["*"],
+                    allow_credentials=True,
+                    allow_methods=["*"],
+                    allow_headers=["*"],
+                )
+
+            config = uvicorn.Config(
+                app, 
+                host="0.0.0.0", 
+                port=port, 
+                log_level="info",
+                log_config={
+                    "version": 1,
+                    "disable_existing_loggers": False,
+                    "formatters": {
+                        "default": {
+                            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                        }
+                    },
+                    "handlers": {
+                        "default": {
+                            "formatter": "default",
+                            "class": "logging.StreamHandler",
+                            "stream": "ext://sys.stderr"
+                        }
+                    },
+                    "loggers": {
+                        "uvicorn": {"handlers": ["default"], "level": "INFO"},
+                        "uvicorn.error": {"level": "INFO"},
+                        "uvicorn.access": {"handlers": ["default"], "level": "INFO"},
+                    }
+                }
+            )
             server = uvicorn.Server(config)
+            
+            print(f"\nStarting server on http://0.0.0.0:{port}")
+            print("WebSocket endpoint available at ws://localhost:{port}/ws")
             
             # Start the server in a separate task
             server_task = asyncio.create_task(server.serve())
             
-            print(f"Server starting on http://0.0.0.0:{port}")
-            
             # Give the server a moment to start
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)  # Increased from 1 to 2 seconds
             
-            if not server_task.done():  # If server started successfully
+            if not server_task.done():
+                print("\nServer started successfully")
                 print("Waiting for client connection...")
                 
                 # Wait for client connection
@@ -297,7 +312,7 @@ async def main():
                         return
                     await asyncio.sleep(0.1)
                 
-                print("Client connected.")
+                print("Client connected successfully")
                 await broadcast_message("System", "Ready to process queries.")
                 
                 try:
@@ -306,18 +321,17 @@ async def main():
                             user_input = await get_user_input()
                             print(f"Processing input: {user_input}")
                             await broadcast_message("System", "Processing your request...")
-                            result = await agent.process_query(user_input)  # Pass the agent instance
+                            result = await agent.process_query(user_input)
                             await broadcast_message("System", "Query processing complete")
                         except Exception as e:
                             print(f"Error during conversation: {e}")
                             await broadcast_message("System", f"Error: {e}")
                             continue
                 finally:
-                    # Cleanup
                     if server:
                         await server.shutdown()
                 
-                break  # Exit the retry loop if everything worked
+                break
             
         except Exception as e:
             if "address already in use" in str(e).lower():
@@ -329,15 +343,6 @@ async def main():
             else:
                 print(f"Unexpected error: {e}")
                 raise
-
-async def broadcast_message(agent: str, message: str):
-    data = {
-        "type": "message",
-        "agent": agent,
-        "content": message,
-        "timestamp": datetime.datetime.now().isoformat()
-    }
-    await manager.broadcast(data)
 
 if __name__ == "__main__":
     try:
