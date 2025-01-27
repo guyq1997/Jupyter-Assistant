@@ -3,7 +3,7 @@ import './ChangesSummary.css';
 
 interface ChangesSummaryProps {
   changes: Array<{
-    type: 'add' | 'delete' | 'update';
+    type: 'update';
     status: 'pending' | 'accepted' | 'rejected';
   }>;
   onAcceptAll: () => void;
@@ -16,13 +16,7 @@ const ChangesSummary: React.FC<ChangesSummaryProps> = ({
   onRejectAll
 }) => {
   const pendingChanges = changes.filter(c => c.status === 'pending');
-  const stats = pendingChanges.reduce(
-    (acc, change) => {
-      acc[change.type]++;
-      return acc;
-    },
-    { add: 0, delete: 0, update: 0 }
-  );
+  const updateCount = pendingChanges.length;
 
   if (pendingChanges.length === 0) {
     return null;
@@ -32,18 +26,8 @@ const ChangesSummary: React.FC<ChangesSummaryProps> = ({
     <div className="changes-summary">
       <div className="changes-stats">
         <div className="stat-item">
-          <span className="stat-icon add">+</span>
-          <span className="stat-count">{stats.add}</span>
-          <span className="stat-label">Added</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-icon delete">-</span>
-          <span className="stat-count">{stats.delete}</span>
-          <span className="stat-label">Deleted</span>
-        </div>
-        <div className="stat-item">
           <span className="stat-icon update">↻</span>
-          <span className="stat-count">{stats.update}</span>
+          <span className="stat-count">{updateCount}</span>
           <span className="stat-label">Modified</span>
         </div>
       </div>

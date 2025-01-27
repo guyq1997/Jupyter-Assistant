@@ -38,3 +38,6 @@ pathlib>=1.0.1  # For path handling
 python-multipart
 
 sentence_transformers
+
+sumy
+spacy

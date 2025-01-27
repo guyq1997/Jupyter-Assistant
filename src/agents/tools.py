@@ -2,15 +2,8 @@
 import json
 from typing import Annotated, Optional, Dict, Any, Union, List
 from dataclasses import dataclass
-from autogen_core.tools import FunctionTool
-from nbformat.v4 import new_notebook, new_markdown_cell, new_code_cell
 import nbformat
 import asyncio
-import time
-from duckduckgo_search import DDGS
-from openai import AsyncOpenAI
-from transformers import pipeline
-import numpy as np
 from search_notebook import (
     get_search_engine,
     format_search_results,
@@ -23,8 +16,22 @@ from screenshot_utils import take_screenshot, take_screenshot_sync
 from web_scraper import process_urls, validate_url
 from state import get_manager  # Replace web_server import with state import
 import logging
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer
+from sumy.nlp.stemmers import Stemmer
+from sumy.utils import get_stop_words
+from langdetect import detect
+import re
+import nltk  # Import nltk here for downloading resources
+import spacy
 
 logger = logging.getLogger(__name__)
+
+# 加载语言模型
+nlp_en = spacy.load("en_core_web_sm")
+nlp_de = spacy.load("de_core_news_sm")
+nlp_zh = spacy.load("zh_core_web_sm")
 
 @dataclass
 class NotebookEditResult:
@@ -49,6 +56,95 @@ def get_notebook() -> Dict[str, Any]:
     content = manager.get_notebook_content()
     logger.info(f"Got notebook content: {bool(content)}")
     return content  # Use the manager's getter method
+
+def get_summary(text: str, word_count: int = 10) -> str:
+    """Generate summary with language-specific handling."""
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except LookupError:
+
+        nltk.download('tokenizers/punkt')
+
+    # Check for 'punkt_tab' specifically
+    try:
+        nltk.data.find('tokenizers/punkt_tab')
+    except LookupError:
+
+        nltk.download()
+
+    if not text.strip():
+        return "<empty>"
+        
+    try:
+        # Detect language
+        lang = detect(text)
+        
+        # For Chinese text
+        if lang == 'zh':
+            sentences = re.split(r'[。！？]', text)
+            sentences = [s.strip() for s in sentences if s.strip()]
+            if not sentences:
+                return text[:50] + "..."
+            processed_text = '\n'.join(sentences)
+        else:
+            processed_text = text
+            
+        # Generate summary using sumy
+        try:
+            parser = PlaintextParser.from_string(processed_text, Tokenizer(lang))
+            stemmer = Stemmer(lang)
+            summarizer = LsaSummarizer(stemmer)
+            summarizer.stop_words = get_stop_words(lang)
+            
+            # Get sentences and join them
+            summary = ' '.join([str(s) for s in summarizer(parser.document, word_count//5)])
+            if not summary:
+                words = text.split()
+                return ' '.join(words[:word_count]) + "..."
+            return summary
+            
+        except ValueError:
+            words = text.split()
+            return ' '.join(words[:word_count]) + "..."
+            
+    except Exception as e:
+        logger.error(f"Summarization error: {str(e)}")
+        return text[:50] + "..."
+
+def list_notebook_cells() -> str:
+    """List index, cell type and summary of each notebook cell. Supports multiple languages."""
+    try:
+        notebook = get_notebook()
+        if not notebook or "cells" not in notebook:
+            return "No notebook loaded in memory"
+
+        toc = []
+        for idx, cell in enumerate(notebook["cells"]):
+            cell_type = cell["cell_type"]
+            # Join the source list into a single string
+            source = "".join(cell["source"]).strip()
+
+            # Generate summary if cell has content
+            if source:
+                try:
+                    # For code cells, add a prefix to help with summarization
+                    if cell_type == "code":
+                        source = "Python code: " + source
+                    
+                    summary = get_summary(source, word_count=10)
+                except Exception as e:
+                    logger.error(f"Error generating summary for cell {idx}: {str(e)}")
+                    summary = "<error generating summary>"
+            else:
+                summary = "<empty cell>"
+
+            toc.append(f"[cell {idx}] {cell_type}: {summary}")
+
+        return "\n".join(toc)
+
+    except Exception as e:
+        logger.error(f"Error generating table of contents: {str(e)}")
+        return f"Error generating table of contents: {str(e)}"
 
 def get_multiple_cells(cell_indices: List[int]) -> str:
     """Get the content of multiple cells in the notebook in a well-structured format."""
@@ -133,151 +229,6 @@ async def update_cell(
         return str(NotebookEditResult(
             success=False,
             message=f"Failed to propose cell update: {str(e)}"
-        ))
-
-async def insert_cell_below(
-    index: Annotated[int, "Index where to insert the cell"],
-    content: Annotated[str, "Content for the new cell"],
-    cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
-) -> str:
-    """Propose inserting a new cell below the specified index."""
-    try:
-        notebook = get_notebook()
-        manager = get_manager()
-        if manager is None:
-            return str(NotebookEditResult(
-                success=False,
-                message="Manager not initialized"
-            ))
-        
-        if not notebook or "cells" not in notebook:
-            return str(NotebookEditResult(
-                success=False,
-                message="No notebook loaded in memory"
-            ))
-        
-        changes = [{
-            "type": "add",
-            "index": index + 1,
-            "old_content": None,
-            "new_content": content,
-            "cell_type": cell_type
-        }]
-        
-        data = {
-            "type": "propose_changes",
-            "changes": changes
-        }
-        await manager.broadcast(data)
-        
-        return str(NotebookEditResult(
-            success=True,
-            message="Changes proposed successfully"
-        ))
-        
-    except Exception as e:
-        return str(NotebookEditResult(
-            success=False,
-            message=f"Failed to propose cell insertion: {str(e)}"
-        ))
-
-async def insert_cell_above(
-    index: Annotated[int, "Index where to insert the cell"],
-    content: Annotated[str, "Content for the new cell"],
-    cell_type: Annotated[str, "Type of cell ('markdown' or 'code')"] = 'markdown'
-) -> str:
-    """Propose inserting a new cell above the specified index."""
-    try:
-        notebook = get_notebook()
-        manager = get_manager()
-        if manager is None:
-            return str(NotebookEditResult(
-                success=False,
-                message="Manager not initialized"
-            ))
-        
-        if not notebook or "cells" not in notebook:
-            return str(NotebookEditResult(
-                success=False,
-                message="No notebook loaded in memory"
-            ))
-        
-        changes = [{
-            "type": "add",
-            "index": index,
-            "old_content": None,
-            "new_content": content,
-            "cell_type": cell_type
-        }]
-        
-        data = {
-            "type": "propose_changes",
-            "changes": changes
-        }
-        await manager.broadcast(data)
-        
-        return str(NotebookEditResult(
-            success=True,
-            message="Changes proposed successfully"
-        ))
-        
-    except Exception as e:
-        return str(NotebookEditResult(
-            success=False,
-            message=f"Failed to propose cell insertion: {str(e)}"
-        ))
-
-async def delete_cell(
-    index: Annotated[int, "Index of the cell to delete"]
-) -> str:
-    """Propose deleting a cell at the specified index."""
-    try:
-        notebook = get_notebook()
-        manager = get_manager()
-        if manager is None:
-            return str(NotebookEditResult(
-                success=False,
-                message="Manager not initialized"
-            ))
-        
-        if not notebook or "cells" not in notebook:
-            return str(NotebookEditResult(
-                success=False,
-                message="No notebook loaded in memory"
-            ))
-        
-        if 0 <= index < len(notebook["cells"]):
-            old_content = notebook["cells"][index]["source"]
-            cell_type = notebook["cells"][index]["cell_type"]
-            
-            changes = [{
-                "type": "delete",
-                "index": index,
-                "old_content": old_content,
-                "new_content": None,
-                "cell_type": cell_type
-            }]
-            
-            data = {
-                "type": "propose_changes",
-                "changes": changes
-            }
-            await manager.broadcast(data)
-            
-            return str(NotebookEditResult(
-                success=True,
-                message="Changes proposed successfully"
-            ))
-        else:
-            return str(NotebookEditResult(
-                success=False,
-                message=f"Cell index {index} out of range"
-            ))
-            
-    except Exception as e:
-        return str(NotebookEditResult(
-            success=False,
-            message=f"Failed to propose cell deletion: {str(e)}"
         ))
 
 async def get_cell_content(
@@ -412,55 +363,6 @@ tools = [{
                 "cell_type": {"type": "string", "enum": ["markdown", "code"], "description": "Type of cell ('markdown' or 'code')"}
             },
             "required": ["cell_index", "content", "cell_type"],
-            "additionalProperties": False
-        },
-        "strict": True
-    }
-}, {
-    "type": "function",
-    "function": {
-        "name": "insert_cell_below",
-        "description": "Insert a new cell below the specified index in the notebook.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "index": {"type": "integer", "description": "Index where to insert a new cell below"},
-                "content": {"type": "string", "description": "Content for the new cell"},
-                "cell_type": {"type": "string", "enum": ["markdown", "code"], "description": "Type of cell ('markdown' or 'code')"}
-            },
-            "required": ["index", "content", "cell_type"],
-            "additionalProperties": False
-        },
-        "strict": True
-    }
-}, {
-    "type": "function",
-    "function": {
-        "name": "insert_cell_above",
-        "description": "Insert a new cell above the specified index in the notebook.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "index": {"type": "integer", "description": "Index where to insert a new cell above"},
-                "content": {"type": "string", "description": "Content for the new cell"},
-                "cell_type": {"type": "string", "enum": ["markdown", "code"], "description": "Type of cell ('markdown' or 'code')"}
-            },
-            "required": ["index", "content", "cell_type"],
-            "additionalProperties": False
-        },
-        "strict": True
-    }
-}, {
-    "type": "function",
-    "function": {
-        "name": "delete_cell",
-        "description": "Delete a cell at the specified index in the notebook.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "index": {"type": "integer", "description": "Index of the cell to delete"}
-            },
-            "required": ["index"],
             "additionalProperties": False
         },
         "strict": True
@@ -630,6 +532,18 @@ tools = [{
         },
         "strict": True
     }
+}, {
+    "type": "function",
+    "function": {
+        "name": "list_notebook_cells",
+        "description": "List index, cell type and summery of each notebook cell.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False
+        },
+        "strict": True
+    }
 }]
 
 async def call_function(name, args):
@@ -653,16 +567,14 @@ async def call_function(name, args):
         # Map function names to their implementations
         function_map = {
             "update_cell": update_cell,
-            "insert_cell_below": insert_cell_below,
-            "insert_cell_above": insert_cell_above,
-            "delete_cell": delete_cell,
             "get_multiple_cells": get_multiple_cells,
             "get_cell_content": get_cell_content,
             "search_with_retry": search_with_retry,
             "search_notebook": search_notebook,
             "take_webpage_screenshot": take_webpage_screenshot,
             "take_webpage_screenshot_sync": take_webpage_screenshot_sync,
-            "scrape_websites": scrape_websites
+            "scrape_websites": scrape_websites,
+            "list_notebook_cells": list_notebook_cells,
         }
         
         if name not in function_map:

@@ -5,6 +5,7 @@ import ChatPanel from './components/ChatPanel';
 import { ICell, INotebook } from './types/notebook';
 import { websocketService } from './services/websocket';
 import './App.css';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Message {
   type: string;
@@ -31,7 +32,26 @@ function App() {
     // Handle incoming messages
     const handleMessage = (message: any) => {
       if (message.type === 'notebook_update') {
-        setNotebook(message.content);
+        try {
+          const notebookContent = typeof message.content === 'string' 
+            ? JSON.parse(message.content) 
+            : message.content;
+            
+          // Ensure cells have proper source arrays
+          const processedNotebook = {
+            ...notebookContent,
+            cells: notebookContent.cells.map((cell: any) => ({
+              ...cell,
+              id: cell.id || uuidv4(),
+              cell_type: cell.cell_type || 'markdown',
+              source: Array.isArray(cell.source) ? cell.source : [cell.source || '']
+            }))
+          };
+          
+          setNotebook(processedNotebook);
+        } catch (error) {
+          console.error('Error processing notebook update:', error);
+        }
       } else if (message.type === 'message') {
         setMessages(prev => [...prev, message]);
       }

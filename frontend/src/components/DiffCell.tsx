@@ -5,7 +5,7 @@ import './DiffCell.css';
 interface DiffCellProps {
   oldCell?: ICell;
   newCell?: ICell;
-  changeType: 'add' | 'delete' | 'update';
+  changeType: 'update';
   onAccept: () => void;
   onReject: () => void;
 }
@@ -18,25 +18,7 @@ const DiffCell: React.FC<DiffCellProps> = ({
   onReject
 }) => {
   const renderDiffContent = () => {
-    if (changeType === 'add') {
-      return (
-        <div className="diff-content diff-add">
-          <div className="cell-type-label">{newCell?.cell_type}</div>
-          <pre className="diff-text">{newCell?.source.join('\n')}</pre>
-        </div>
-      );
-    }
-
-    if (changeType === 'delete') {
-      return (
-        <div className="diff-content diff-delete">
-          <div className="cell-type-label">{oldCell?.cell_type}</div>
-          <pre className="diff-text">{oldCell?.source.join('\n')}</pre>
-        </div>
-      );
-    }
-
-    if (changeType === 'update' && oldCell && newCell) {
+    if (oldCell && newCell) {
       const oldLines = oldCell.source;
       const newLines = newCell.source;
       const maxLines = Math.max(oldLines.length, newLines.length);
@@ -68,18 +50,13 @@ const DiffCell: React.FC<DiffCellProps> = ({
         </div>
       );
     }
-
     return null;
   };
 
   return (
-    <div className={`diff-cell diff-${changeType}`}>
+    <div className="diff-cell diff-update">
       <div className="diff-header">
-        <div className="diff-type">
-          {changeType === 'add' && 'New Cell'}
-          {changeType === 'delete' && 'Deleted Cell'}
-          {changeType === 'update' && 'Modified Cell'}
-        </div>
+        <div className="diff-type">Modified Cell</div>
         <div className="diff-actions">
           <button className="diff-action accept" onClick={onAccept}>
             <span className="icon">✓</span>

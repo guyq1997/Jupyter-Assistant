@@ -92,13 +92,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ selectedCells, messages, onSendMe
   const renderSelectedCells = () => {
     return selectedCells.map((cell, index) => (
       <div key={index} className="selected-cell">
-        <span>{cell.notebookIndex}</span>
+        <span>cell {cell.notebookIndex}</span>
         <button 
           className="cell-remove-btn"
           onClick={() => onRemoveCell?.(index)}
           aria-label="Remove cell"
         >
-          ×
+          
         </button>
       </div>
     ));

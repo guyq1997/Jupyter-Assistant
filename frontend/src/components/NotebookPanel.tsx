@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import Cell from './Cell';
-import { ICell, INotebook } from '../types/notebook';
+import { ICell, INotebook, IOutput } from '../types/notebook';
 import { websocketService } from '../services/websocket';
 import './NotebookPanel.css';
 import DiffCell from './DiffCell';
@@ -96,11 +96,11 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
     onCellsSelected(selectedCellsArray);
   }, [selectedCells, cells, onCellsSelected]);
 
-  const handleCellChange = (id: string, source: string) => {
+  const handleCellChange = (id: string, source: string[]) => {
     const updatedCells = cells.map(cell => 
       cell.id === id ? { 
         ...cell, 
-        source: typeof source === 'string' ? source.split('\n') : source
+        source: source
       } : cell
     );
     
@@ -167,21 +167,43 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
         throw new Error('Invalid notebook format');
       }
 
+      // Send the notebook content to the backend with the file path
+      await websocketService.send({
+        type: 'notebook_opened',
+        path: fileHandle.name,
+        content: JSON.stringify(notebook),
+        timestamp: new Date().toISOString()
+      });
+      
       // Include outputs when extracting cell data
-      const notebookWithIds = notebook.cells.map((cell: any) => ({
-        id: cell.id || uuidv4(),
-        cell_type: cell.cell_type || 'markdown',
-        source: Array.isArray(cell.source) ? cell.source : [cell.source || ''],
-        outputs: cell.outputs || []
-      }));
+      const notebookWithIds = notebook.cells.map((cell: any) => {
+        // Ensure source is always an array of strings
+        let source: string[];
+        if (typeof cell.source === 'string') {
+          source = [cell.source];
+        } else if (Array.isArray(cell.source)) {
+          source = cell.source.map((line: any) => 
+            typeof line === 'string' ? line : String(line)
+          );
+        } else {
+          source = [''];
+        }
 
-      const filePath = await fileHandle.getFile();
+        return {
+          id: cell.id || uuidv4(),
+          cell_type: cell.cell_type || 'markdown',
+          source: source,
+          outputs: Array.isArray(cell.outputs) ? cell.outputs : [],
+          execution_count: cell.execution_count,
+          metadata: cell.metadata
+        };
+      });
       
       setCells(notebookWithIds);
       setCurrentFile(fileHandle);
       setIsDirty(false);
       
-      console.log('File loading complete. Cells state updated.');
+      console.log('File loading complete. Cells state updated:', notebookWithIds);
     } catch (error) {
       if ((error as Error).name !== 'AbortError') {
         console.error('Error reading notebook file:', error);
@@ -291,7 +313,9 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
               id: cell.id || uuidv4(),
               cell_type: cell.cell_type || 'markdown',
               source: Array.isArray(cell.source) ? cell.source : [cell.source || ''],
-              outputs: cell.outputs || []
+              outputs: cell.outputs || [],
+              execution_count: cell.execution_count,
+              metadata: cell.metadata
             }));
 
             setCells(notebookWithIds);
@@ -337,74 +361,41 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
     };
 
     const handleAcceptChange = async (changeId: string) => {
-      setProposedChanges(prev => {
-        // Find the current change and calculate its offset based on previous accepted changes
-        const currentChangeIndex = prev.findIndex(change => change.id === changeId);
-        const currentChange = prev[currentChangeIndex];
+      // Get all changes up to and including the current change
+      const allChanges = proposedChanges.filter(change => change.status === 'pending');
+      const currentChangeIndex = allChanges.findIndex(change => change.id === changeId);
+      const changesToApply = allChanges.slice(0, currentChangeIndex + 1);
+      
+      // Apply changes in sequence
+      const updatedCells = [...cells];
+      
+      changesToApply.forEach(change => {
+        const targetIndex = change.index;
         
-        if (!currentChange) return prev;
-
-        // Calculate offset from previous changes
-        const offset = prev
-          .slice(0, currentChangeIndex)
-          .filter(change => change.status === 'accepted')
-          .reduce((acc, change) => {
-            if (change.type === 'add') return acc + 1;
-            if (change.type === 'delete') return acc - 1;
-            return acc;
-          }, 0);
-
-        // Apply the change with the calculated offset
-        const updatedCells = [...cells];
-        const targetIndex = currentChange.index + offset;
-        
-        switch (currentChange.type) {
-          case 'update':
-            if (targetIndex < updatedCells.length) {
-              updatedCells[targetIndex] = {
-                ...updatedCells[targetIndex],
-                source: Array.isArray(currentChange.new_content) 
-                  ? currentChange.new_content 
-                  : [currentChange.new_content],
-                cell_type: currentChange.cell_type
-              };
-            }
-            break;
-            
-          case 'add':
-            const newCell = {
-              id: uuidv4(),
-              cell_type: currentChange.cell_type,
-              source: Array.isArray(currentChange.new_content) 
-                ? currentChange.new_content 
-                : [currentChange.new_content]
-            };
-            updatedCells.splice(targetIndex, 0, newCell);
-            break;
-            
-          case 'delete':
-            if (targetIndex < updatedCells.length) {
-              updatedCells.splice(targetIndex, 1);
-            }
-            break;
+        // Only handle update type
+        if (targetIndex < updatedCells.length) {
+          updatedCells[targetIndex] = {
+            ...updatedCells[targetIndex],
+            source: Array.isArray(change.new_content) 
+              ? change.new_content 
+              : [change.new_content],
+            cell_type: change.cell_type
+          };
         }
-        
-        setCells(updatedCells);
-        setIsDirty(true);
+      });
+      
+      setCells(updatedCells);
+      setIsDirty(true);
 
-        // Update the status of the current change and adjust indices of remaining changes
-        return prev.map((change, index) => {
-          if (index === currentChangeIndex) {
+      // Update the status of all applied changes
+      setProposedChanges(prev => 
+        prev.map(change => {
+          if (changesToApply.some(c => c.id === change.id)) {
             return { ...change, status: 'accepted' };
           }
-          // Adjust indices of subsequent pending changes based on the current change
-          if (index > currentChangeIndex && change.status === 'pending') {
-            const newIndex = change.index + (currentChange.type === 'add' ? 1 : currentChange.type === 'delete' ? -1 : 0);
-            return { ...change, index: newIndex };
-          }
           return change;
-        }).filter(change => change.status === 'pending');
-      });
+        }).filter(change => change.status === 'pending')
+      );
 
       // Notify backend
       websocketService.send({
@@ -501,22 +492,24 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
         <div className="notebook-content">
           {cells.map((cell, index) => {
             const pendingChange = proposedChanges.find(
-              change => change.index === index && change.status === 'pending'
+              change => change.index === index && 
+                       change.status === 'pending' && 
+                       change.type === 'update'
             );
 
             if (pendingChange) {
               return (
                 <DiffCell
                   key={pendingChange.id}
-                  oldCell={pendingChange.type !== 'add' ? cell : undefined}
-                  newCell={pendingChange.type !== 'delete' ? {
+                  oldCell={cell}
+                  newCell={{
                     id: uuidv4(),
                     cell_type: pendingChange.cell_type,
                     source: Array.isArray(pendingChange.new_content) 
                       ? pendingChange.new_content 
                       : [pendingChange.new_content]
-                  } : undefined}
-                  changeType={pendingChange.type}
+                  }}
+                  changeType="update"
                   onAccept={() => handleAcceptChange(pendingChange.id)}
                   onReject={() => handleRejectChange(pendingChange.id)}
                 />
@@ -537,29 +530,6 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
               />
             );
           })}
-
-          {/* Handle additions at the end */}
-          {proposedChanges
-            .filter(change => 
-              change.type === 'add' && 
-              change.index >= cells.length && 
-              change.status === 'pending'
-            )
-            .map(change => (
-              <DiffCell
-                key={change.id}
-                newCell={{
-                  id: uuidv4(),
-                  cell_type: change.cell_type,
-                  source: Array.isArray(change.new_content) 
-                    ? change.new_content 
-                    : [change.new_content]
-                }}
-                changeType="add"
-                onAccept={() => handleAcceptChange(change.id)}
-                onReject={() => handleRejectChange(change.id)}
-              />
-            ))}
         </div>
       </div>
     );

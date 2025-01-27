@@ -1,15 +1,38 @@
-# Environment variables
-.env
-.env.*
+# Node.js (for frontend)
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+frontend/coverage/
+frontend/build/
+frontend/.DS_Store
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
 
-# Python
+# Python (for backend)
+src/__pycache__/
+src/*.py[cod]
+src/*$py.class
+src/.Python
+src/.venv/
+src/venv/
+src/.env
+src/.env.*
+
+# Python (for backend)
 __pycache__/
 *.py[cod]
 *$py.class
 .Python
 .venv/
 venv/
+.env
+.env.*
 
 # IDE
 .vscode/
-.idea/ 
+.idea/
