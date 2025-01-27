@@ -32,18 +32,19 @@ class Agent:
         if not hasattr(self, 'message_history'):
             self.message_history = []
         selected_cells_content = query.get("selected_cells", "")
+        file_context = "# Inputs\n\n# Current Cells\n Here are the cells i am looking at\n"
         query = query.get("message", "")
         print(query)
         print(selected_cells_content)
         if len(self.message_history) > 0:
             messages = self.message_history.copy()
-            messages.append({"role": "user", "content": selected_cells_content})
-            messages.append({"role": "user", "content": query})
+            messages.append({"role": "user", "content": file_context + selected_cells_content, "name":"potential_context"})
+            messages.append({"role": "user", "content": "\n\n" + query})
         else:
             messages = [
                 {"role": "system", "content": SYSTEM_MESSAGE_EDITOR},
-                {"role": "user", "content": selected_cells_content, "name": "potential_context"},
-                {"role": "user", "content": query}
+                {"role": "user", "content": file_context + selected_cells_content},
+                {"role": "user", "content": "\n\n" + query}
             ]
             self.message_history = messages.copy()
         
@@ -123,9 +124,10 @@ class Agent:
                 try:
                     name = tool_call["function"]["name"] or ""
                     args = tool_call["function"]["arguments"] or "{}"
-                    tool_result = await call_function(name, args)
-                    tool_message = f"{counter}. Time: Calling tool {name} with arguments {args}"
+                    
+                    tool_message = f"{counter}. round: Calling *tool {name}*"
                     await broadcast_message("Assistant", f"\n\n🔧 {tool_message}\n\n")
+                    tool_result = await call_function(name, args)
                     await asyncio.sleep(0)
                 except Exception as e:
                     error_message = f"Error calling tool {name}: {str(e)}"

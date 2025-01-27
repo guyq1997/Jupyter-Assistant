@@ -20,6 +20,7 @@ interface CellProps {
   onSelect: () => void;
   onAddAbove: () => void;
   onAddBelow: () => void;
+  onRemove: () => void;
 }
 
 // Register Python language
@@ -33,25 +34,13 @@ const Cell: React.FC<CellProps> = ({
   isSelected,
   onSelect,
   onAddAbove,
-  onAddBelow
+  onAddBelow,
+  onRemove
 }) => {
   const [isEditing, setIsEditing] = useState(!cell.source.length && cell.cell_type === 'markdown');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Function to safely join source content
-  const getSourceContent = () => {
-    if (!cell.source) return '';
-    // Always join array elements without adding extra spaces
-    return Array.isArray(cell.source) ? cell.source.join('') : String(cell.source);
-  };
 
-  // Function to safely update source content
-  const handleSourceChange = (value: string) => {
-    // Convert the string to an array with a single element
-    onChange([value]);
-    // 使用 requestAnimationFrame 延迟执行高度调整
-    requestAnimationFrame(adjustTextareaHeight);
-  };
 
   // Auto-resize textarea function
   const adjustTextareaHeight = () => {
@@ -91,46 +80,6 @@ const Cell: React.FC<CellProps> = ({
     }
   };
 
-  const handleBlur = () => {
-    if (cell.cell_type === 'markdown') {
-      setIsEditing(false);
-      // 确保在退出编辑模式时取消选中状态
-      if (isSelected) {
-        onSelect();
-      }
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (cell.cell_type === 'markdown') {
-      if (e.key === 'Escape' || (e.key === 'Enter' && e.shiftKey)) {
-        e.preventDefault();
-        setIsEditing(false);
-        // 取消选中状态
-        if (isSelected) {
-          onSelect();
-        }
-      }
-    }
-  };
-
-  const renderOutput = (output: IOutput) => {
-    if (output.output_type === 'stream' && output.text) {
-      return <pre className="output-content">{output.text.join('')}</pre>;
-    } else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
-      if (output.data?.['text/html']) {
-        return <div dangerouslySetInnerHTML={{ __html: output.data['text/html'].join('') }} />;
-      } else if (output.data?.['text/plain']) {
-        return <pre className="output-content">{output.data['text/plain'].join('')}</pre>;
-      }
-    }
-    return null;
-  };
-
-
-  // 修改 shouldShowToolbar 逻辑
-  const shouldShowToolbar = () => true;
-
   return (
     <div 
       className={`notebook-cell ${isSelected ? 'selected' : ''}`}
@@ -155,6 +104,7 @@ const Cell: React.FC<CellProps> = ({
           <button className="cell-action-button" onClick={onDelete} title="Delete">
             <FaTrash />
           </button>
+
         </div>
         <div className="cell-select">
           <input

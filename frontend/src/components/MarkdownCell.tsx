@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import { ICell } from '../types/notebook';
 import './MarkdownCell.css';
 
@@ -93,7 +95,10 @@ const MarkdownCell: React.FC<MarkdownCellProps> = ({
           </div>
         ) : (
           <div className="cell-preview markdown-preview">
-            <ReactMarkdown>{getSourceContent() || ' '}</ReactMarkdown>
+            <ReactMarkdown 
+              children={getSourceContent() || ' '}
+              rehypePlugins={[rehypeRaw, rehypeSanitize]} 
+            />
           </div>
         )}
       </div>

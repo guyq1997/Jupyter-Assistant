@@ -1,7 +1,8 @@
+# notebook_search.py
+
 """Notebook search functionality implementation."""
 import nbformat
-import os
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -86,7 +87,7 @@ class NotebookSearchEngine:
         contents = [cell.content for cell in self.notebook_cells]
         # Compute embeddings in one go
         self.cell_embeddings = self.model.encode(contents, show_progress_bar=False)
-
+    
     def search(self, query: str, top_k: int = 5, min_score: float = 0.5) -> List[SearchResult]:
         """Perform semantic search within the current notebook.
         
@@ -103,7 +104,6 @@ class NotebookSearchEngine:
         """
         if not self.notebook_cells:
             raise ValueError("No notebook loaded. Call index_notebook() first.")
-
         query_embedding = self.model.encode(query, show_progress_bar=False)
         
         # Vectorized similarity computation
@@ -114,15 +114,13 @@ class NotebookSearchEngine:
         for i, (score, cell) in enumerate(zip(similarities, self.notebook_cells)):
             if score >= min_score:
                 results.append(SearchResult(cell_index=i, cell=cell, score=float(score)))
-
         results.sort(key=lambda x: x.score, reverse=True)
         return results[:top_k]
-
+    
     def keyword_search(self, keywords: List[str], match_all: bool = False) -> List[SearchResult]:
         """Perform keyword-based search within the current notebook."""
         if not self.notebook_cells:
             raise ValueError("No notebook loaded. Call index_notebook() first.")
-
         # Pre-process keywords
         keywords_lower = [kw.lower() for kw in keywords]
         
@@ -141,12 +139,10 @@ class NotebookSearchEngine:
                 if match_count > 0:
                     score = match_count / len(keywords)
                     results.append(SearchResult(cell_index=i, cell=cell, score=score))
-
         results.sort(key=lambda x: x.score, reverse=True)
         return results
 
-# Global instance for singleton pattern
-_search_engine: Optional[NotebookSearchEngine] = None
+_search_engine: Optional[NotebookSearchEngine] = None  # 初始化全局搜索引擎变量
 
 def get_search_engine() -> NotebookSearchEngine:
     """Get or create the global search engine instance."""
@@ -162,7 +158,6 @@ async def format_search_results(results: List[SearchResult]) -> str:
     """Format search results into a readable string."""
     if not results:
         return "No matching cells found."
-
     # Deduplicate results based on cell_index, keeping the highest scoring result
     seen_indices = {}
     for result in results:
@@ -171,7 +166,6 @@ async def format_search_results(results: List[SearchResult]) -> str:
     
     # Convert back to list and sort by score
     unique_results = sorted(seen_indices.values(), key=lambda x: x.score, reverse=True)
-
     # Pre-allocate list with known size for better memory efficiency
     formatted_results = []
     for i, result in enumerate(unique_results, 1):
@@ -182,5 +176,4 @@ async def format_search_results(results: List[SearchResult]) -> str:
             f"Cell Type: {cell.cell_type}",
             f"Content:\n{cell.content}"
         ])
-
     return "\n".join(formatted_results)
