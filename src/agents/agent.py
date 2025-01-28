@@ -243,7 +243,6 @@ class Agent:
 
 # Run the conversation and stream to the console and web interface
 async def main():
-    # Try different ports if the default one is in use
     port = 8765
     max_retries = 5
     server = None
@@ -297,24 +296,11 @@ async def main():
             server_task = asyncio.create_task(server.serve())
             
             # Give the server a moment to start
-            await asyncio.sleep(2)  # Increased from 1 to 2 seconds
+            await asyncio.sleep(2)
             
             if not server_task.done():
                 print("\nServer started successfully")
-                print("Waiting for client connection...")
-                
-                # Wait for client connection
-                connection_timeout = 30  # seconds
-                start_time = asyncio.get_event_loop().time()
-                
-                while not manager.active_connections:
-                    if asyncio.get_event_loop().time() - start_time > connection_timeout:
-                        print("Timeout waiting for client connection")
-                        await server.shutdown()
-                        return
-                    await asyncio.sleep(0.1)
-                
-                print("Client connected successfully")
+                print("Server is ready and waiting for connections...")
                 await broadcast_message("System", "Ready to process queries.")
                 
                 try:
