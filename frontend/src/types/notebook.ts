@@ -18,7 +18,7 @@ export interface ICell {
   execution_count?: number | null;
   outputs?: IOutput[];
   metadata?: Record<string, any>;
-  notebookIndex?: number;
+  index?: number;
 }
 
 export interface INotebook {

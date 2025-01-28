@@ -17,10 +17,10 @@ interface CellProps {
   onTypeChange: (cell_type: 'code' | 'markdown') => void;
   onDelete: () => void;
   isSelected: boolean;
-  onSelect: () => void;
+  onSelect: (id: string, index: number) => void;
   onAddAbove: () => void;
   onAddBelow: () => void;
-  onRemove: () => void;
+  index: number;
 }
 
 // Register Python language
@@ -35,58 +35,16 @@ const Cell: React.FC<CellProps> = ({
   onSelect,
   onAddAbove,
   onAddBelow,
-  onRemove
+  index,
 }) => {
-  const [isEditing, setIsEditing] = useState(!cell.source.length && cell.cell_type === 'markdown');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-
-
-  // Auto-resize textarea function
-  const adjustTextareaHeight = () => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      // 先保存当前光标位置
-      const selectionStart = textarea.selectionStart;
-      const selectionEnd = textarea.selectionEnd;
-      
-      textarea.style.height = '0';  // 先重置高度
-      const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${scrollHeight}px`;
-      
-      // 恢复光标位置
-      textarea.setSelectionRange(selectionStart, selectionEnd);
-    }
-  };
-
-  // Adjust height on mount and content change
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [cell.source, isEditing]);
-
-  // Also adjust height when switching to edit mode
-  useEffect(() => {
-    if (isEditing) {
-      adjustTextareaHeight();
-    }
-  }, [isEditing]);
-
-  const handleDoubleClick = () => {
-    if (cell.cell_type === 'markdown') {
-      setIsEditing(true);
-      if (!isSelected) {
-        onSelect();
-      }
-    }
-  };
 
   return (
     <div 
       className={`notebook-cell ${isSelected ? 'selected' : ''}`}
-      onDoubleClick={handleDoubleClick}
     >
       <div className="cell-toolbar">
         <div className="cell-actions">
+          <span className="cell-index">[{index}]</span>
           <select 
             className="cell-type-select"
             value={cell.cell_type}
@@ -110,7 +68,7 @@ const Cell: React.FC<CellProps> = ({
           <input
             type="checkbox"
             checked={isSelected}
-            onChange={onSelect}
+            onChange={() => onSelect(cell.id, index)}
             className="cell-select-checkbox"
           />
         </div>
@@ -119,23 +77,11 @@ const Cell: React.FC<CellProps> = ({
         <CodeCell
           cell={cell}
           onChange={onChange}
-          isSelected={isSelected}
-          onSelect={onSelect}
-          onAddAbove={onAddAbove}
-          onAddBelow={onAddBelow}
-          onDelete={onDelete}
-          onTypeChange={() => onTypeChange('markdown')}
         />
       ) : (
         <MarkdownCell
           cell={cell}
           onChange={onChange}
-          isSelected={isSelected && isEditing}
-          onSelect={onSelect}
-          onAddAbove={onAddAbove}
-          onAddBelow={onAddBelow}
-          onDelete={onDelete}
-          onTypeChange={() => onTypeChange('code')}
         />
       )}
     </div>

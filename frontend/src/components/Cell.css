@@ -109,3 +109,12 @@
 .cell-type-label:hover {
   background: #e0e0e0;
 }
+
+.cell-index {
+  font-family: monospace;
+  color: #666;
+  font-size: 0.9rem;
+  padding: 4px 8px;
+  margin-right: 4px;
+  user-select: none;
+}

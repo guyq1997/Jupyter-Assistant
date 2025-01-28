@@ -8,6 +8,7 @@ interface DiffCellProps {
   changeType: 'update';
   onAccept: () => void;
   onReject: () => void;
+  index: number;
 }
 
 const DiffCell: React.FC<DiffCellProps> = ({
@@ -15,7 +16,8 @@ const DiffCell: React.FC<DiffCellProps> = ({
   newCell,
   changeType,
   onAccept,
-  onReject
+  onReject,
+  index,
 }) => {
   const renderDiffContent = () => {
     if (oldCell && newCell) {
@@ -28,6 +30,7 @@ const DiffCell: React.FC<DiffCellProps> = ({
       return (
         <div className="diff-content diff-update">
           <div className="cell-type-label">
+            <span className="cell-index">[{index}]</span>
             {oldCell.cell_type} → {newCell.cell_type}
           </div>
           <div className="diff-lines">

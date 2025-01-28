@@ -206,7 +206,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const renderSelectedCells = () => {
     return selectedCells.map((cell, index) => (
       <div key={index} className="selected-cell">
-        <span>cell {cell.notebookIndex}</span>
+        <span>cell {index}</span>
         <button
           className="cell-remove-btn"
           onClick={() => onRemoveCell?.(index)}

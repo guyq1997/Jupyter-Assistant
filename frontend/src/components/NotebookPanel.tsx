@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import Cell from './Cell';
 import { ICell, INotebook, IOutput } from '../types/notebook';
@@ -8,24 +8,17 @@ import DiffCell from './DiffCell';
 import ChangesSummary from './ChangesSummary';
 
 interface NotebookPanelProps {
-  notebook: INotebook;
-  onCellsSelected: (cells: ICell[]) => void;
-  onSave: (notebookPath: string) => void;
+  selectcells: ICell[];
+  setselectcells: React.Dispatch<React.SetStateAction<ICell[]>>;
 }
 
-const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected, onSave }) => {
-  const [cells, setCells] = useState<ICell[]>(notebook.cells);
+const NotebookPanel: React.FC<NotebookPanelProps> = ({selectcells, setselectcells }) => {
+  const [cells, setCells] = useState<ICell[]>([]);
   const [currentFile, setCurrentFile] = useState<FileSystemFileHandle | null>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const [proposedChanges, setProposedChanges] = useState<any[]>([]);
   const [metadata, setMetadata] = useState(null);
 
-  // Update cells when notebook changes
-  useEffect(() => {
-    setCells(notebook.cells);
-  }, [notebook]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -85,18 +78,7 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
     return () => websocketService.removeMessageHandler(handleMessage);
   }, [currentFile]);
 
-  // Update useEffect to handle selected cells changes with index and type
-  useEffect(() => {
-    const selectedCellsArray = cells
-      .map((cell, index) => ({ 
-        ...cell, 
-        notebookIndex: index,
-        cell_type: cell.cell_type // Explicitly include cell_type
-      }))
-      .filter(cell => selectedCells.has(cell.id));
-    onCellsSelected(selectedCellsArray);
-  }, [selectedCells, cells, onCellsSelected]);
-
+    
   const handleCellChange = (id: string, source: string[]) => {
     const updatedCells = cells.map(cell => 
       cell.id === id ? { 
@@ -256,7 +238,6 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
           timestamp: new Date().toISOString()
         });
 
-        onSave(currentFile.name);
         setIsDirty(false);
       } else {
         // Save as new file
@@ -275,7 +256,7 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
         await writable.close();
         setCurrentFile(handle);
         
-        onSave(handle.name);
+
       }
       setIsDirty(false);
     } catch (error) {
@@ -334,13 +315,17 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
       event.stopPropagation();
     };
 
-    const toggleCellSelection = (id: string) => {
-      setSelectedCells(prev => {
-        const newSelection = new Set(prev);
-        if (newSelection.has(id)) {
-          newSelection.delete(id);
-        } else {
-          newSelection.add(id);
+    const toggleCellSelection = (id: string, index: number) => {
+      setselectcells((prev: ICell[]) => {
+        const newSelection = prev.filter(cell => cell.id !== id);
+        if (newSelection.length === prev.length) {
+          const selectedCell = cells.find(cell => cell.id === id);
+          if (selectedCell) {
+            newSelection.push({
+              ...selectedCell,
+              index:index  // Add the index to the selected cell
+            });
+          }
         }
         return newSelection;
       });
@@ -501,6 +486,7 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
                       ? pendingChange.new_content 
                       : [pendingChange.new_content]
                   }}
+                  index={index}
                   changeType="update"
                   onAccept={() => handleAcceptChange(pendingChange.id)}
                   onReject={() => handleRejectChange(pendingChange.id)}
@@ -512,14 +498,14 @@ const NotebookPanel: React.FC<NotebookPanelProps> = ({ notebook, onCellsSelected
               <Cell
                 key={cell.id}
                 cell={cell}
+                index={index}
                 onChange={(source) => handleCellChange(cell.id, source)}
                 onTypeChange={(type) => handleCellTypeChange(cell.id, type)}
                 onDelete={() => deleteCell(cell.id)}
-                isSelected={selectedCells.has(cell.id)}
-                onSelect={() => toggleCellSelection(cell.id)}
+                isSelected={selectcells.map(sc => sc.id).includes(cell.id)}
+                onSelect={() => toggleCellSelection(cell.id, index)}
                 onAddAbove={() => addCell(index, 'above')}
                 onAddBelow={() => addCell(index, 'below')}
-                onRemove={() => deleteCell(cell.id)}
               />
             );
           })}

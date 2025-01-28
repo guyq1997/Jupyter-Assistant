@@ -4,11 +4,7 @@ from typing import Annotated, Optional, Dict, Any, Union, List
 from dataclasses import dataclass
 import nbformat
 import asyncio
-from search_notebook import (
-    get_search_engine,
-    format_search_results,
-    NotebookSearchEngine
-)
+import ast
 from screenshot_utils import take_screenshot, take_screenshot_sync
 from web_scraper import process_urls, validate_url
 from state import get_manager  # Replace web_server import with state import
@@ -50,38 +46,105 @@ def get_notebook() -> Dict[str, Any]:
     content = manager.get_notebook_content()
     logger.info(f"Got notebook content: {bool(content)}")
     return content  # Use the manager's getter method
+import nltk
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer
+from sumy.nlp.stemmers import Stemmer
+from sumy.utils import get_stop_words
+from langdetect import detect
+import re
+import logging
 
+logger = logging.getLogger(__name__)
+import ast
+
+import ast
+
+def summarize_code(code: str) -> str:
+    """
+    Summarize Python code using an Abstract Syntax Tree (AST), including
+    imports, functions, classes, and top-level statements.
+    """
+    try:
+        # Parse the code into an AST object
+        tree = ast.parse(code)
+        
+        summaries = []
+
+        # Extract summaries for imports, functions, classes, and module-level statements
+        for node in tree.body:
+            if isinstance(node, ast.Import):  # Standard imports
+                for alias in node.names:
+                    summaries.append(f"Import: {alias.name} {f'as {alias.asname}' if alias.asname else ''}")
+            elif isinstance(node, ast.ImportFrom):  # Relative or absolute imports
+                module = node.module or "(current directory)"
+                for alias in node.names:
+                    summaries.append(f"From {module} import {alias.name} {f'as {alias.asname}' if alias.asname else ''}")
+            elif isinstance(node, ast.FunctionDef):  # Function definitions
+                summaries.append(f"Function `{node.name}`: {ast.get_docstring(node) or 'No docstring provided'}")
+            elif isinstance(node, ast.ClassDef):  # Class definitions
+                summaries.append(f"Class `{node.name}`: {ast.get_docstring(node) or 'No docstring provided'}")
+            elif isinstance(node, ast.Assign):  # Assignments
+                targets = [ast.unparse(target) for target in node.targets]  # Variable(s) being assigned
+                summaries.append(f"Assignment: {' = '.join(targets)}")
+            elif isinstance(node, ast.Expr):  # Top-level expressions
+                expr = ast.unparse(node.value)  # The standalone expression
+                summaries.append(f"Expression: {expr}")
+
+        return "\n".join(summaries) if summaries else "No functions, classes, imports, or significant statements found."
+    except Exception as e:
+        return f"Error summarizing code: {str(e)}"
+    
 def get_summary(text: str, word_count: int = 10) -> str:
     """Generate summary with language-specific handling."""
     try:
         nltk.data.find('tokenizers/punkt')
     except LookupError:
+        nltk.download('punkt')  # 下载必要的 `punkt` 资源
 
-        nltk.download('tokenizers/punkt')
-
-    # Check for 'punkt_tab' specifically
     try:
         nltk.data.find('tokenizers/punkt_tab')
     except LookupError:
-
-        nltk.download('tokenizers/punkt_tab')
-
+        print("found punkt_tab")
+        nltk.download('punkt_tab')  # 下载必要的 `punkt` 资源
+    
     if not text.strip():
         return "<empty>"
-        
+    
     try:
         # Detect language
-        lang = detect(text)
+        lang_code = detect(text)
+        logger.info(f"Detected language code: {lang_code}")
+        print(f"Detected language code: {lang_code}")
+        # Map language code to sumy supported language names
+        lang_map = {
+            'ca': 'catalan',
+            'en': 'english',
+            'zh-cn': 'chinese',
+            'zh-tw': 'chinese',
+            'es': 'spanish',
+            'fr': 'french',
+            'de': 'german',
+            'it': 'italian',
+            'nl': 'dutch',
+            'pt': 'portuguese',
+            # 根据需要添加更多语言映射
+        }
+        lang = lang_map.get(lang_code, 'english')  # 默认使用英文
+        logger.info(f"Mapped language: {lang}")
         
         # For Chinese text
-        if lang == 'zh':
+        if lang == 'chinese':
             sentences = re.split(r'[。！？]', text)
             sentences = [s.strip() for s in sentences if s.strip()]
             if not sentences:
                 return text[:50] + "..."
             processed_text = '\n'.join(sentences)
+            logger.info(f"Processed Chinese text with {len(sentences)} sentences.")
         else:
             processed_text = text
+            logger.info(f"Processed non-Chinese text.")
             
         # Generate summary using sumy
         try:
@@ -89,22 +152,25 @@ def get_summary(text: str, word_count: int = 10) -> str:
             stemmer = Stemmer(lang)
             summarizer = LsaSummarizer(stemmer)
             summarizer.stop_words = get_stop_words(lang)
+            logger.info(f"Initialized Sumy summarizer for language: {lang}")
             
             # Get sentences and join them
-            summary = ' '.join([str(s) for s in summarizer(parser.document, word_count//5)])
-            if not summary:
-                words = text.split()
-                return ' '.join(words[:word_count]) + "..."
+            summary_sentences = summarizer(parser.document, 1)
+            summary = ' '.join([str(s) for s in summary_sentences])
+            logger.info(f"Generated summary with {len(summary_sentences)} sentences.")
+            print(summary)
             return summary
             
-        except ValueError:
+        except ValueError as ve:
+            logger.error(f"Sumy processing error: {ve}")
             words = text.split()
             return ' '.join(words[:word_count]) + "..."
             
     except Exception as e:
         logger.error(f"Summarization error: {str(e)}")
+        logger.error(f"NLTK data paths: {nltk.data.path}")
         return text[:50] + "..."
-
+    
 def list_notebook_cells() -> str:
     """List index, cell type and summary of each notebook cell. Supports multiple languages."""
     try:
@@ -121,11 +187,12 @@ def list_notebook_cells() -> str:
             # Generate summary if cell has content
             if source:
                 try:
-                    # For code cells, add a prefix to help with summarization
+                    # For code cells, use AST to summarize
                     if cell_type == "code":
-                        source = "Python code: " + source
-                    
-                    summary = get_summary(source, word_count=10)
+                        summary = summarize_code(source)  # Use summarize_code function
+                        print(summary)
+                    else:
+                        summary = get_summary(source, word_count=10)
                 except Exception as e:
                     logger.error(f"Error generating summary for cell {idx}: {str(e)}")
                     summary = "<error generating summary>"
@@ -143,6 +210,8 @@ def list_notebook_cells() -> str:
 def get_multiple_cells(cell_indices: List[int]) -> str:
     """Get the content of multiple cells in the notebook in a well-structured format."""
     try:
+        if len(cell_indices) > 10:
+            return "This is too much, please get less then 10 cell content at once."
         notebook = get_notebook()
         
         if not notebook or "cells" not in notebook:

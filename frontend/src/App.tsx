@@ -25,43 +25,22 @@ function App() {
     path: string | null;
   } | null>(null);
 
+  // Initialize WebSocket connection
   useEffect(() => {
-    // Connect to WebSocket when component mounts
     websocketService.connect();
-
-    // Handle incoming messages
-    const handleMessage = (message: any) => {
-      if (message.type === 'notebook_update') {
-        try {
-          const notebookContent = typeof message.content === 'string' 
-            ? JSON.parse(message.content) 
-            : message.content;
-            
-          // Ensure cells have proper source arrays
-          const processedNotebook = {
-            ...notebookContent,
-            cells: notebookContent.cells.map((cell: any) => ({
-              ...cell,
-              id: cell.id || uuidv4(),
-              cell_type: cell.cell_type || 'markdown',
-              source: Array.isArray(cell.source) ? cell.source : [cell.source || '']
-            }))
-          };
-          
-          setNotebook(processedNotebook);
-        } catch (error) {
-          console.error('Error processing notebook update:', error);
-        }
-      } else if (message.type === 'message') {
+    
+    // Add message handler for system messages
+    const handleSystemMessage = (message: any) => {
+      if (message.type === 'message' && message.agent) {
         setMessages(prev => [...prev, message]);
       }
     };
-
-    websocketService.addMessageHandler(handleMessage);
-
+    
+    websocketService.addMessageHandler(handleSystemMessage);
+    
     // Cleanup on unmount
     return () => {
-      websocketService.removeMessageHandler(handleMessage);
+      websocketService.removeMessageHandler(handleSystemMessage);
       websocketService.disconnect();
     };
   }, []);
@@ -80,9 +59,6 @@ function App() {
     }
   }, [pendingMessage]);
 
-  const handleCellsSelected = useCallback((cells: ICell[]) => {
-    setSelectedCells(cells);
-  }, []);
 
   const handleSendMessage = useCallback((message: string) => {
     const userMessage = {
@@ -97,24 +73,25 @@ function App() {
     const selectedContent = selectedCells
       .map(cell => {
         const cellContent = cell.source.join('\n');
-        return `<cell_${cell.notebookIndex}_${cell.cell_type}>\n${cellContent}\n</cell_${cell.notebookIndex}_${cell.cell_type}>`;
+        return `<cell_${cell.index}_${cell.cell_type}>\n${cellContent}\n</cell_${cell.index}_${cell.cell_type}>`;
       })
       .join('\n\n');
     
     setPendingMessage({
       message,
       selectedContent,
-      path: notebook.path || null
+      path:  null
     });
-  }, [selectedCells, notebook.path]);
+  }, [selectedCells]);
 
-  const handleSaveNotebook = useCallback((notebookPath: string) => {
-    websocketService.saveNotebook(notebookPath, notebook);
-  }, [notebook]);
 
   const handleClearMessages = () => {
     setMessages([]);
   };
+
+  const handleRemoveCell = useCallback((index: number) => {
+    setSelectedCells(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   return (
     <div className="App">
@@ -126,15 +103,15 @@ function App() {
         snapOffset={30}
       >
         <NotebookPanel 
-          notebook={notebook}
-          onCellsSelected={handleCellsSelected}
-          onSave={handleSaveNotebook}
+          selectcells={selectedCells}
+          setselectcells={setSelectedCells}
         />
         <ChatPanel 
           selectedCells={selectedCells}
           messages={messages}
           onSendMessage={handleSendMessage}
           onClearMessages={handleClearMessages}
+          onRemoveCell={handleRemoveCell}
         />
       </Split>
     </div>

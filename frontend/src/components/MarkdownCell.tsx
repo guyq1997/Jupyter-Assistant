@@ -8,23 +8,11 @@ import './MarkdownCell.css';
 interface MarkdownCellProps {
   cell: ICell;
   onChange: (source: string[]) => void;
-  isSelected: boolean;
-  onSelect: () => void;
-  onAddAbove: () => void;
-  onAddBelow: () => void;
-  onDelete: () => void;
-  onTypeChange: () => void;
 }
 
 const MarkdownCell: React.FC<MarkdownCellProps> = ({
   cell,
   onChange,
-  isSelected,
-  onSelect,
-  onAddAbove,
-  onAddBelow,
-  onDelete,
-  onTypeChange
 }) => {
   const [isEditing, setIsEditing] = useState(!cell.source.length);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -61,9 +49,6 @@ const MarkdownCell: React.FC<MarkdownCellProps> = ({
   const handleDoubleClick = () => {
     if (cell.cell_type === 'markdown') {
       setIsEditing(true);
-      if (!isSelected) {
-        onSelect();
-      }
     }
   };
 

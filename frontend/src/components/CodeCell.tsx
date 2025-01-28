@@ -11,19 +11,12 @@ SyntaxHighlighter.registerLanguage('python', python);
 interface CodeCellProps {
   cell: ICell;
   onChange: (source: string[]) => void;
-  isSelected: boolean;
-  onSelect: () => void;
-  onAddAbove: () => void;
-  onAddBelow: () => void;
-  onDelete: () => void;
-  onTypeChange: () => void;
 }
 
 const CodeCell: React.FC<CodeCellProps> = ({
   cell,
   onChange,
-  isSelected,
-  onSelect
+
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const codeEditorRef = useRef<HTMLDivElement>(null);

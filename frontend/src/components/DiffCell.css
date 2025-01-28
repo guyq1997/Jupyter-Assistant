@@ -77,6 +77,23 @@
   font-family: monospace;
 }
 
+.cell-index {
+  font-family: monospace;
+  color: #666;
+  font-size: 0.9rem;
+  padding: 4px 8px;
+  margin-right: 4px;
+  user-select: none;
+}
+
+.cell-type-label .cell-index {
+  color: #495057;
+  padding: 2px 4px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 3px;
+  margin-right: 8px;
+}
+
 .diff-text {
   margin: 0;
   font-family: monospace;
