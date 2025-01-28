@@ -21,16 +21,11 @@ from sumy.utils import get_stop_words
 from langdetect import detect
 import re
 import nltk  # Import nltk here for downloading resources
-import spacy
 from duckduckgo_search import DDGS
 import time
 
 logger = logging.getLogger(__name__)
 
-# 加载语言模型
-nlp_en = spacy.load("en_core_web_sm")
-nlp_de = spacy.load("de_core_news_sm")
-nlp_zh = spacy.load("zh_core_web_sm")
 
 @dataclass
 class NotebookEditResult:
@@ -69,7 +64,7 @@ def get_summary(text: str, word_count: int = 10) -> str:
         nltk.data.find('tokenizers/punkt_tab')
     except LookupError:
 
-        nltk.download()
+        nltk.download('tokenizers/punkt_tab')
 
     if not text.strip():
         return "<empty>"

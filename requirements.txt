@@ -38,6 +38,6 @@ pathlib>=1.0.1  # For path handling
 python-multipart
 
 sentence_transformers
-
+langdetect
 sumy
-spacy
+spacy>=3.0.0

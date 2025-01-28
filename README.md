@@ -57,26 +57,34 @@ Create a `.env` file in the project root with:
 ```
 OPENAI_API_KEY=your_api_key_here
 ```
+5. Set up nltk packages
+```bash
+python -m nltk.downloader all
+```
+or
+```bash
+sudo python -m nltk.downloader -d /usr/share/nltk_data all
+```
 
-5. Start the FastAPI backend:
+6. Start the FastAPI backend:
 Run the following command to start the backend server:
 ```bash
 python src/agents/agent.py
 ```
 
-6. Navigate to the frontend directory and install frontend dependencies:
+7. Navigate to the frontend directory and install frontend dependencies:
 ```bash
 cd frontend
 npm install
 ```
 
-7. Start the React frontend:
+8. Start the React frontend:
 Run the following command to start the frontend development server:
 ```bash
 npm start
 ```
 
-8. Access the application:
+9. Access the application:
 Open your web browser and go to [http://localhost:3000](http://localhost:3000) to view the application.
 
 Now you should have the Jupyter-Assistant application running on your local machine!
