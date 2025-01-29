@@ -1,53 +1,55 @@
-# 使用 Python 作为基础镜像
+# Build stage for Frontend
+FROM node:18-alpine AS frontend-builder
+
+# Set working directory
+WORKDIR /app/frontend
+
+# Copy package files
+COPY frontend/package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy frontend source code
+COPY frontend/ ./
+
+# Build frontend
+RUN npm run build
+
+# Build stage for Backend
 FROM python:3.12-slim AS backend
 
-# 设置工作目录
+# Set working directory
 WORKDIR /app
 
-# 复制后端的 requirements.txt 并安装依赖
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# 复制后端源代码
+RUN python -m nltk.downloader all
+# Copy backend source code
 COPY src/ /app/src/
 
-# 设置环境变量
+# Copy run script
+COPY run.py .
+
+# Copy built frontend files
+COPY --from=frontend-builder /app/frontend/build /app/frontend/build
+
+# Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-# 创建必要的目录
+# Create necessary directories
 RUN mkdir -p /app/uploads
 
-# 暴露后端端口
+# Expose port
 EXPOSE 8765
 
-# 使用 Node.js 作为基础镜像
-FROM node:18 AS frontend
-
-# 设置工作目录
-WORKDIR /app/frontend
-
-# 复制前端的 package.json 和 package-lock.json 并安装依赖
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm install
-
-# 复制前端源代码
-COPY frontend/ ./
-
-# 构建前端应用
-RUN npm run build
-
-# 使用 Apache 作为生产环境的服务器
-FROM httpd:alpine
-
-# 复制构建好的前端文件到 Apache 的 html 目录
-COPY --from=frontend /app/frontend/build /usr/local/apache2/htdocs/
-
-# 复制后端代码到 Apache 镜像中
-COPY --from=backend /app /app
-
-# 复制 Apache 配置文件
-COPY httpd.conf /usr/local/apache2/conf/httpd.conf
-
-# 启动 Apache
-CMD ["httpd-foreground"] 
+# Start the application using run.py
+CMD ["python", "run.py"] 

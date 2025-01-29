@@ -1,7 +1,7 @@
-from prompt import SYSTEM_MESSAGE_PLANNER, SYSTEM_MESSAGE_EDITOR, GENERATE_RUBRIC
-from tools import tools, call_function
+from src.agents.prompt import SYSTEM_MESSAGE_PLANNER, SYSTEM_MESSAGE_EDITOR, GENERATE_RUBRIC
+from src.agents.tools import tools, call_function
 import asyncio
-from utils import broadcast_message
+from src.agents.utils import broadcast_message
 from openai import OpenAI
 import json
 from typing import List, Dict, Any
@@ -238,6 +238,6 @@ class Agent:
         # After processing all tool calls and getting final response
         # Update message history with the complete conversation
         self.message_history = messages.copy()
-        await broadcast_message("System", "process_query_complete")
+        #await broadcast_message("System", "process_query_complete")
         logger.info("Agent: Completion message sent")
         return

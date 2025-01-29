@@ -1,16 +1,13 @@
 # notebook_search.py
 
 """Notebook search functionality implementation."""
-import nbformat
+
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-import json
-from pathlib import Path
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from datetime import datetime
 import logging 
-from state import get_manager
+from src.agents.state import get_manager
 
 logger = logging.getLogger(__name__)
 

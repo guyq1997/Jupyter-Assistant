@@ -1,5 +1,4 @@
 """Global state management for the application."""
-from typing import Optional
 
 # This will hold the global manager instance
 _manager = None

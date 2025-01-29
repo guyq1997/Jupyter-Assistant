@@ -1,13 +1,41 @@
+# Version control
 .git
 .gitignore
-.env
+.gitattributes
+
+# Python
 __pycache__
 *.pyc
 *.pyo
 *.pyd
 .Python
-.venv
+venv/
+.env
 *.log
+
+# Node.js
+frontend/node_modules
+frontend/npm-debug.log
+frontend/build
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+uploads/
+*.md
+!README.md
+.cursorrules
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+.venv
 .pytest_cache
 .mypy_cache
 .coverage

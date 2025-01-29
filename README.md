@@ -32,62 +32,33 @@ In educational and research settings, step-by-step code comprehension and real-t
   - Features a scheduling mechanism that operates in a loop
   - Handles user requests by using appropriate tools
   - Progresses step-by-step, continuing based on current context until the task is completed or cannot proceed
+  
+## Docker Deployment
 
-## Deployment
+### Prerequisites
+- Docker installed on your system
+- Git to clone the repository
 
+### Quick Start
 1. Clone the repository:
-```bash
-git clone https://github.com/guyq1997/Jupyter-Assistant
-cd Jupyter-Assistant
-```
+   ```bash
+   git clone https://github.com/guyq1997/Jupyter-Assistant.git
+   cd Jupyter-Assistant
+   ```
 
-2. Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+2. Build the Docker image:
+   ```bash
+   docker build -t notebook-assistant .
+   ```
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+3. Run the container:
+   ```bash
+   docker run -p 8765:8765 notebook-assistant --OPENAI_API_KEY=<your-api-key>
+   ```
 
-4. Set up environment variables:
-Create a `.env` file in the project root with:
-```
-OPENAI_API_KEY=your_api_key_here
-```
-5. Set up nltk packages
-```bash
-python -m nltk.downloader all
-```
-or
-```bash
-sudo python -m nltk.downloader -d /usr/share/nltk_data all
-```
-
-6. Start the FastAPI backend:
-Run the following command to start the backend server:
-```bash
-python src/agents/agent.py
-```
-
-7. Navigate to the frontend directory and install frontend dependencies:
-```bash
-cd frontend
-npm install
-```
-
-8. Start the React frontend:
-Run the following command to start the frontend development server:
-```bash
-npm start
-```
-
-9. Access the application:
-Open your web browser and go to [http://localhost:3000](http://localhost:3000) to view the application.
-
-Now you should have the Jupyter-Assistant application running on your local machine!
+4. Access the application:
+   - Open your web browser and navigate to `http://localhost:8765`
+   - The WebSocket endpoint will be available at `ws://localhost:8765/ws`
 
 ## License
 

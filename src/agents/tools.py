@@ -5,9 +5,9 @@ from dataclasses import dataclass
 import nbformat
 import asyncio
 import ast
-from screenshot_utils import take_screenshot, take_screenshot_sync
-from web_scraper import process_urls, validate_url
-from state import get_manager  # Replace web_server import with state import
+from src.agents.screenshot_utils import take_screenshot, take_screenshot_sync
+from src.agents.web_scraper import process_urls, validate_url
+from src.agents.state import get_manager  # Replace web_server import with state import
 import logging
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer

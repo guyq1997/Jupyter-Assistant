@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  jupyter-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./src:/app/src  # For development
+      - ./run.py:/app/run.py  # Mount run.py for development
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3 

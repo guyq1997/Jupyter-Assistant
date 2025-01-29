@@ -4,13 +4,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import asyncio
 import uvicorn
-import datetime
+
 from pathlib import Path
-from search_notebook import NotebookSearchEngine
-from state import set_manager, get_manager
-from agent import Agent
-from web_server import ConnectionManager
-from utils import broadcast_message
+from src.agents.search_notebook import NotebookSearchEngine
+from src.agents.state import set_manager, get_manager
+from src.agents.agent import Agent
+from src.agents.web_server import ConnectionManager
+from src.agents.utils import broadcast_message
 import logging
 
 # Set up logging
@@ -22,7 +22,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["localhost:8765"],
+    allow_origins=["*"],  # Safe in local Docker development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -103,7 +103,7 @@ async def main():
             logger.info(f"Attempting to start server on port {port} (attempt {attempt + 1}/{max_retries})")
             config = uvicorn.Config(
                 app, 
-                host="localhost", 
+                host="0.0.0.0",  # Safe in local Docker development
                 port=port, 
                 log_level="info",
                 log_config={
@@ -141,16 +141,16 @@ async def main():
                 logger.info("Server started successfully")
                 print("\nServer started successfully")
                 print("Server is ready and waiting for connections...")
-                await broadcast_message("System", "Ready to process queries.")
+                #await broadcast_message("System", "Ready to process queries.")
                 
                 try:
                     while True:
                         try:
                             user_input = await get_user_input()
                             logger.info(f"Processing input: {user_input}")
-                            await broadcast_message("System", "Processing your request...")
+                            await broadcast_message("System", "Processing your request...\n")
                             result = await agent.process_query(user_input)
-                            await broadcast_message("System", "Query processing complete")
+                            #await broadcast_message("System", "Query processing complete")
                         except Exception as e:
                             logger.error(f"Error during conversation: {e}")
                             print(f"Error during conversation: {e}")

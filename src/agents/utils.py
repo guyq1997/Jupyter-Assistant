@@ -1,6 +1,6 @@
 import datetime
 from typing import Optional
-from state import get_manager
+from src.agents.state import get_manager
 
 async def broadcast_message(agent: str, message: str):
     manager = get_manager()

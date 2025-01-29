@@ -2,9 +2,7 @@
 
 import asyncio
 from playwright.async_api import async_playwright
-import os
 import tempfile
-from pathlib import Path
 
 async def take_screenshot(url: str, output_path: str = None, width: int = 1280, height: int = 720) -> str:
     """
