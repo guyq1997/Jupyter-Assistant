@@ -1,6 +1,12 @@
 ﻿# Jupyter-Assistant
 A web editor inspired by Cursor that uses large language models (LLM) to enhance Jupyter Notebook assignments.
 
+## Demo Video
+
+[![Jupyter-Assistant Demo](https://img.youtube.com/vi/WVLLtWDX8tE/0.jpg)](https://www.youtube.com/watch?v=WVLLtWDX8tE)
+
+Click the image above to watch a demonstration of Jupyter-Assistant in action.
+
 ## Challenges with Editing Jupyter Notebooks
 Developing projects like web applications requires managing numerous scripts, typically using IDEs for efficiency. While Cursor leverages LLMs for code generation, it struggles with Jupyter Notebooks because they are long JSON files, making AI-driven editing error-prone and inefficient.
 
@@ -63,3 +69,4 @@ In educational and research settings, step-by-step code comprehension and real-t
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
