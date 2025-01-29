@@ -190,7 +190,6 @@ def list_notebook_cells() -> str:
                     # For code cells, use AST to summarize
                     if cell_type == "code":
                         summary = summarize_code(source)  # Use summarize_code function
-                        print(summary)
                     else:
                         summary = get_summary(source, word_count=10)
                 except Exception as e:
@@ -222,7 +221,12 @@ def get_multiple_cells(cell_indices: List[int]) -> str:
         for idx in cell_indices:
             if 0 <= idx < len(notebook["cells"]):
                 cell = notebook["cells"][idx]
-                cell_content = cell["source"].strip()
+                # Handle both string and list source formats
+                cell_content = cell["source"]
+                if isinstance(cell_content, list):
+                    cell_content = "".join(cell_content)
+                cell_content = cell_content.strip()
+                
                 if cell_content:
                     formatted_cells.append(f"<{cell['cell_type']}>\n{cell_content}\n</{cell['cell_type']}>")
                 else:

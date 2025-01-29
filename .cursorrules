@@ -33,40 +33,42 @@ Note all the tools are in python. So in the case you need to do batch processing
 
 # Scratchpad
 
-## Current Task: Implement Local File Real-time Sync
+## Current Task: Consolidate Web Server and Agent Code
 
 Plan:
-[X] 1. Add File System Watcher
-    - Add watchdog for directory monitoring ✓
-    - Handle file change events ✓
-    - Implement debounce for rapid changes ✓
+[X] 1. Analyze Code Structure
+    - Identify duplicate code in web_server.py and agent.py ✓
+    - Map out shared functionality ✓
+    - Identify unique features in each file ✓
 
-[X] 2. Add File Sync API
-    - Add endpoint for setting watch directory ✓
-    - Add endpoint for getting file content ✓
-    - Add WebSocket events for file changes ✓
+[X] 2. Refactor Server Components
+    - Consolidate WebSocket handling ✓
+    - Merge ConnectionManager functionality ✓
+    - Unify CORS middleware setup ✓
+    - Standardize logging configuration ✓
 
-[X] 3. Update Connection Manager
-    - Add file watching capability ✓
-    - Add file change broadcasting ✓
-    - Handle multiple file watchers ✓
+[X] 3. Refactor Agent Components
+    - Move Agent class to separate file ✓
+    - Clean up message handling ✓
+    - Streamline tool calls processing ✓
+    - Improve error handling ✓
 
-[ ] 4. Frontend Integration
-    - Add save to watch directory option
-    - Handle file change notifications
-    - Update UI on file changes
+[X] 4. Create Unified Server
+    - Combine server startup logic ✓
+    - Implement clean shutdown ✓
+    - Add proper error handling ✓
+    - Ensure all features are preserved ✓
 
-[ ] 5. Testing and Debugging
-    - Test file watching with multiple clients
-    - Test concurrent file modifications
-    - Add error handling for file access issues
-    - Add logging for file operations
+[ ] 5. Testing
+    - Test WebSocket connections
+    - Test Agent functionality
+    - Test error scenarios
+    - Verify all original features work
 
-Current Step: Testing the file watching functionality
+Current Step: Ready for testing
 
 Next Actions:
-1. Test file watching with multiple clients
-2. Add error handling for file access issues
-3. Add logging for file operations
-4. Test concurrent file modifications
+1. Start the unified server and test basic functionality
+2. Test WebSocket connections and message handling
+3. Test Agent interactions and tool calls
 
